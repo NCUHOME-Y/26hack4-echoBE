@@ -1,8 +1,8 @@
 package router
 
 import (
+	"echo/handler"
 	"echo/middleware"
-	"echo/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +18,7 @@ func SetupRouter() *gin.Engine {
 	public := r.Group("/api/public")
 	{
 		public.GET("/ping", func(c *gin.Context) {
-			response.Success(c, "pong 后端基建运行正常")
+			handler.Success(c, "pong 后端基建运行正常")
 		})
 	}
 
