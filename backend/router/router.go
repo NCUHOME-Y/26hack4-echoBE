@@ -21,6 +21,7 @@ func SetupRouter(userHandler *handler.UserHandler) *gin.Engine {
 			handler.Success(c, "pong 后端基建运行正常")
 		})
 		public.POST("/register", userHandler.Register)
+		public.POST("/login", userHandler.Login)
 	}
 
 	//需鉴权的区域

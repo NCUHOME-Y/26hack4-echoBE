@@ -29,3 +29,15 @@ func (r *UserRepository) Create(ctx context.Context, u *model.User) error {
 	}
 	return nil
 }
+
+func (r *UserRepository) GetByAccount(ctx context.Context, account string) (*model.User, error) {
+	var u model.User
+	err := r.db.WithContext(ctx).Where("account = ?", account).First(&u).Error //?作为占位符，防止SQL注入
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, model.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询用户失败: %w", err)
+	}
+	return &u, nil
+}
