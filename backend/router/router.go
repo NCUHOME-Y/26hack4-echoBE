@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter() *gin.Engine {
+func SetupRouter(userHandler *handler.UserHandler) *gin.Engine {
 	r := gin.New()
 
 	//挂载基建
@@ -20,6 +20,7 @@ func SetupRouter() *gin.Engine {
 		public.GET("/ping", func(c *gin.Context) {
 			handler.Success(c, "pong 后端基建运行正常")
 		})
+		public.POST("/register", userHandler.Register)
 	}
 
 	//需鉴权的区域
