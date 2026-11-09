@@ -26,11 +26,9 @@ func SetupRouter(userHandler *handler.UserHandler) *gin.Engine {
 
 	//需鉴权的区域
 	private := r.Group("/api/private")
-
-	_ = private //这行用来测试的，我不声明的话go会报错，这个暂时不需要，不用管
-
-	// private.Use(middleware.JWTAuth()) //等要打开的时候我再打开
+	private.Use(middleware.JWTAuth())
 	{
+		private.GET("/whoami", userHandler.WhoAmI)
 	}
 
 	return r

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"echo/middleware"
 	"echo/model"
 
 	"github.com/gin-gonic/gin"
@@ -31,5 +32,12 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
-	Success(c, u)
+	token, err := middleware.GenerateToken(u.ID) //暂时token的有效期是24小时，后续可以改时间
+	if err != nil {
+		log.Printf("签发 token 失败: %v", err)
+		Error(c, http.StatusInternalServerError, "登录失败，请稍后重试")
+		return
+	}
+
+	Success(c, gin.H{"token": token, "user": u})
 }

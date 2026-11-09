@@ -18,7 +18,8 @@ func (s *UserService) Login(ctx context.Context, req model.LoginRequest) (*model
 		return nil, err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
+	// 验证密码
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil { //CompareHashAndPassword会自动比较
 		return nil, model.ErrInvalidCredentials
 	}
 
