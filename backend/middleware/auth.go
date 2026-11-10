@@ -54,7 +54,12 @@ func JWTAuth() gin.HandlerFunc {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("意外的签名算法: %v", t.Header["alg"])
 			}
-			return []byte(os.Getenv("JWT_SECRET")), nil
+			//密钥为空时验签会用空密钥，攻击者可自行伪造 token，必须拒绝
+			secret := os.Getenv("JWT_SECRET")
+			if secret == "" {
+				return nil, fmt.Errorf("JWT_SECRET 未配置")
+			}
+			return []byte(secret), nil
 		})
 		//检查token是否有效
 		if err != nil || !token.Valid {

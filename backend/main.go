@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"echo/handler"
 	"echo/repository"
@@ -13,6 +14,11 @@ func main() {
 	db, err := repository.NewDB() //建立数据库连接
 	if err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
+	}
+
+	//godotenv 是在 NewDB 里加载的，所以这个检查必须放在它后面
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Fatal("缺少 JWT_SECRET，请检查 .env")
 	}
 
 	userRepo := repository.NewUserRepository(db) //创建用户仓库
