@@ -17,7 +17,7 @@ type User struct {
 type RegisterRequest struct {
 	Account  string `json:"account" binding:"required,min=3,max=64"`//binding:"required"表示该字段是必须的
 	Nickname string `json:"nickname" binding:"required,max=64"`
-	Password string `json:"password" binding:"required,min=8,max=64"`//表示密码最少8位，最多64位,因为bcrypt的哈希算法会最多处理72位的密码
+	Password string `json:"password" binding:"required,min=8,max=64,alphanum"` //alphanum默认正则表达式，只允许大小写字母和数字，保证64字节，不会撞上bcrypt的72字节上限
 }
 
 //登录的请求体

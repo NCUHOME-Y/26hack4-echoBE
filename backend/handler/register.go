@@ -14,7 +14,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	var req model.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Printf("注册参数校验失败: %v", err)
-		Error(c, http.StatusBadRequest, "参数不合法：账号和昵称必填，密码 8-64 位")
+		Error(c, http.StatusBadRequest, "参数不合法：账号和昵称必填，密码 8-64 位且只能包含大小写字母和数字")
 		return
 	}
 
