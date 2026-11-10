@@ -17,5 +17,9 @@ func Success(c *gin.Context, data interface{}) {
 }
 
 func Error(c *gin.Context, code int, msg string) {
-	c.JSON(http.StatusOK, Response{Code: code, Msg: msg})
+	c.JSON(code, Response{Code: code, Msg: msg})
+}
+
+func Created(c *gin.Context, data interface{}) {
+	c.JSON(http.StatusCreated, Response{Code: http.StatusCreated, Msg: "success", Data: data})
 }

@@ -29,5 +29,5 @@ func (h *UserHandler) Register(c *gin.Context) {
 		return
 	}
 
-	Success(c, u)
+	Created(c, u)
 }

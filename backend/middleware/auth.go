@@ -69,5 +69,7 @@ func JWTAuth() gin.HandlerFunc {
 
 //统一返回未授权响应
 func abortUnauthorized(c *gin.Context, msg string) {
-	c.AbortWithStatusJSON(http.StatusOK, gin.H{"code": http.StatusUnauthorized, "msg": msg, "data": nil})
+	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+		"code": http.StatusUnauthorized, "msg": msg, "data": nil,
+	})
 }
