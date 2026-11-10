@@ -7,28 +7,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// SetupRouter 初始化路由，并将各个路由处理函数与对应的中间件绑定
 func SetupRouter(userHandler *handler.UserHandler) *gin.Engine {
 	r := gin.New()
-
-	//挂载基建
 	r.Use(middleware.Cors())
 	r.Use(middleware.Logger())
 
-	//免登录的区域
-	public := r.Group("/api/public")
+	api := r.Group("/api")
 	{
-		public.GET("/ping", func(c *gin.Context) {
+		api.GET("/ping", func(c *gin.Context) {
 			handler.Success(c, "pong 后端基建运行正常")
 		})
-		public.POST("/register", userHandler.Register)
-		public.POST("/login", userHandler.Login)
-	}
 
-	//需鉴权的区域
-	private := r.Group("/api/private")
-	private.Use(middleware.JWTAuth())
-	{
-		private.GET("/whoami", userHandler.WhoAmI)
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", userHandler.Register)
+			auth.POST("/login", userHandler.Login)
+		}
+
+		// 除 auth 和 ping 外全部需登录，中间件挂组上
+		authed := api.Group("", middleware.JWTAuth())
+		{
+			authed.GET("/users/me", userHandler.WhoAmI)
+		}
 	}
 
 	return r
