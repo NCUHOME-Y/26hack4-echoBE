@@ -28,5 +28,7 @@ func (s *UserService) Register(ctx context.Context, req model.RegisterRequest) (
 		return nil, err
 	}
 
+	u.FillLevel()
+
 	return u, nil
 }
