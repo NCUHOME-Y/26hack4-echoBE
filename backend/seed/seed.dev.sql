@@ -10,12 +10,12 @@ INSERT INTO users (id, account, nickname, password_hash, exp) OVERRIDING SYSTEM 
 ON CONFLICT (id) DO NOTHING;
 
 /*2) 五种状态各一条，覆盖后面要测的每条分支*/
-INSERT INTO questions (id, asker_id, description, status, expires_at, settled_at) OVERRIDING SYSTEM VALUE VALUES
-  (9001, 9001, '周末去图书馆还是在家赶作业',   'open',      now() + interval '7 days',  NULL),
-  (9002, 9002, '社团面试和室友生日撞了选哪个', 'open',      now() + interval '2 hours', NULL),
-  (9003, 9003, '换新手机还是攒钱换电脑',       'open',      now() - interval '1 hour',  NULL),
-  (9004, 9001, '考研还是直接工作',             'closed',    now() - interval '3 days',  now() - interval '10 minutes'),
-  (9005, 9002, '午饭吃食堂还是点外卖',         'contested', now() + interval '5 days',  NULL);
+INSERT INTO questions (id, asker_id, description, status, option_count, expires_at, settled_at) OVERRIDING SYSTEM VALUE VALUES
+  (9001, 9001, '周末去图书馆还是在家赶作业',   'open',      2, now() + interval '7 days',  NULL),
+  (9002, 9002, '社团面试和室友生日撞了选哪个', 'open',      3, now() + interval '2 hours', NULL),
+  (9003, 9003, '换新手机还是攒钱换电脑',       'open',      2, now() - interval '1 hour',  NULL),
+  (9004, 9001, '考研还是直接工作',             'closed',    2, now() - interval '3 days',  now() - interval '10 minutes'),
+  (9005, 9002, '午饭吃食堂还是点外卖',         'contested', 2, now() + interval '5 days',  NULL);
 
 /*3) 选项：题 9002 给三个选项，题 9005 故意做成票数接近*/
 INSERT INTO options (id, question_id, label, sort_no) OVERRIDING SYSTEM VALUE VALUES
