@@ -1,34 +1,35 @@
 package router
 
 import (
+	"echo/handler"
 	"echo/middleware"
-	"echo/response"
 
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter() *gin.Engine {
+// SetupRouter 初始化路由，并将各个路由处理函数与对应的中间件绑定
+func SetupRouter(userHandler *handler.UserHandler) *gin.Engine {
 	r := gin.New()
-
-	//挂载基建
 	r.Use(middleware.Cors())
 	r.Use(middleware.Logger())
 
-	//免登录的区域
-	public := r.Group("/api/public")
+	api := r.Group("/api")
 	{
-		public.GET("/ping", func(c *gin.Context) {
-			response.Success(c, "pong 后端基建运行正常")
+		api.GET("/ping", func(c *gin.Context) {
+			handler.Success(c, "pong 后端基建运行正常")
 		})
-	}
 
-	//需鉴权的区域
-	private := r.Group("/api/private")
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", userHandler.Register)
+			auth.POST("/login", userHandler.Login)
+		}
 
-	_ = private //这行用来测试的，我不声明的话go会报错，这个暂时不需要，不用管
-
-	// private.Use(middleware.JWTAuth()) //等要打开的时候我再打开
-	{
+		// 除 auth 和 ping 外全部需登录，中间件挂组上
+		authed := api.Group("", middleware.JWTAuth())
+		{
+			authed.GET("/users/me", userHandler.WhoAmI)
+		}
 	}
 
 	return r
