@@ -6,3 +6,4 @@ import "errors"
 var ErrAccountTaken = errors.New("账号已被注册")
 var ErrUserNotFound = errors.New("用户不存在")
 var ErrInvalidCredentials = errors.New("账号或密码错误")
+var ErrInvalidAvatar = errors.New("无效的头像标识")
