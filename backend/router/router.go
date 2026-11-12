@@ -29,11 +29,11 @@ func SetupRouter(userHandler *handler.UserHandler, meHandler *handler.MeHandler)
 		authed := api.Group("", middleware.JWTAuth())
 		{
 			// /api/users/me 资源组：当前用户资料与头像（对齐接口文档 §3.4 与路径风格）
-		usersMe := authed.Group("/users/me")
-		{
-			usersMe.GET("", meHandler.Profile)               //当前用户完整资料
-			usersMe.PATCH("/avatar", meHandler.UpdateAvatar) //换头像
-		}
+			usersMe := authed.Group("/users/me")
+			{
+				usersMe.GET("", meHandler.Profile)               //当前用户完整资料
+				usersMe.PATCH("/avatar", meHandler.UpdateAvatar) //换头像
+			}
 		}
 	}
 
