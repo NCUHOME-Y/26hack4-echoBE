@@ -8,7 +8,7 @@ import (
 )
 
 // SetupRouter 初始化路由，并将各个路由处理函数与对应的中间件绑定
-func SetupRouter(userHandler *handler.UserHandler) *gin.Engine {
+func SetupRouter(userHandler *handler.UserHandler, meHandler *handler.MeHandler) *gin.Engine {
 	r := gin.New()
 	r.Use(middleware.Cors())
 	r.Use(middleware.Logger())
@@ -29,6 +29,11 @@ func SetupRouter(userHandler *handler.UserHandler) *gin.Engine {
 		authed := api.Group("", middleware.JWTAuth())
 		{
 			authed.GET("/users/me", userHandler.WhoAmI)
+
+			me := authed.Group("/me")
+			{
+				me.GET("/profile", meHandler.Profile) //"我的"页资料
+			}
 		}
 	}
 
