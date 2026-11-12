@@ -32,7 +32,8 @@ func SetupRouter(userHandler *handler.UserHandler, meHandler *handler.MeHandler)
 
 			me := authed.Group("/me")
 			{
-				me.GET("/profile", meHandler.Profile) //"我的"页资料
+				me.GET("/profile", meHandler.Profile)       //"我的"页资料
+				me.PATCH("/avatar", meHandler.UpdateAvatar) //换头像
 			}
 		}
 	}
