@@ -23,5 +23,7 @@ func (s *UserService) Login(ctx context.Context, req model.LoginRequest) (*model
 		return nil, model.ErrInvalidCredentials
 	}
 
+	u.FillLevel()
+
 	return u, nil
 }
