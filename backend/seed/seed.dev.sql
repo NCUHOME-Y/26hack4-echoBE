@@ -4,9 +4,9 @@ TRUNCATE TABLE questions, options, votes, question_skips, replies, exp_entries
 
 /*1) 测试用户：占位 hash 不能登录，只用于外键和聚合*/
 INSERT INTO users (id, account, nickname, password_hash, exp) OVERRIDING SYSTEM VALUE VALUES
-  (9001, 'seed_alice', 'Alice', 'x', 0),
-  (9002, 'seed_bob',   'Bob',   'x', 0),
-  (9003, 'seed_carol', 'Carol', 'x', 0)
+  (9001, 'alice01', 'Alice', 'x', 0),
+  (9002, 'bob01',   'Bob',   'x', 0),
+  (9003, 'carol01', 'Carol', 'x', 0)
 ON CONFLICT (id) DO NOTHING;
 
 /*2) 五种状态各一条，覆盖后面要测的每条分支*/

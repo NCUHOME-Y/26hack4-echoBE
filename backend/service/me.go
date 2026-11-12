@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"regexp"
+
 	"echo/model"
 	"echo/repository"
 )
@@ -24,10 +26,13 @@ func (s *MeService) GetProfile(ctx context.Context, userID int64) (*model.User, 
 	return u, nil
 }
 
+// avatarPattern 必须和数据库的 users_avatar_check 逐字符一致，
+// 否则非法值会穿过应用层、被数据库拦成 500 而不是 400
+var avatarPattern = regexp.MustCompile(`^avatar-[0-9]{1,3}$`)
+
 // UpdateAvatar换新头像 直接生效的
 func (s *MeService) UpdateAvatar(ctx context.Context, userID int64, avatar string) error {
-	//只接受avatar-N格式 防止随便塞个URL进来
-	if len(avatar) < 8 || avatar[:7] != "avatar-" {
+	if !avatarPattern.MatchString(avatar) {
 		return model.ErrInvalidAvatar
 	}
 	return s.userRepo.UpdateAvatarReq(ctx, userID, map[string]interface{}{"avatar": avatar})
