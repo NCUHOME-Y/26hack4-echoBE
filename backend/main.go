@@ -5,12 +5,24 @@ import (
 	"os"
 
 	"echo/handler"
+	"echo/middleware"
 	"echo/repository"
 	"echo/router"
 	"echo/service"
+
+	"go.uber.org/zap"
 )
 
 func main() {
+
+	zapLogger, err := zap.NewProduction() //创建zap（生产格式：json
+	if err != nil {
+		log.Fatalf("zap日志初始化失败: %v", err)
+	}
+	defer zapLogger.Sync() //程序退出前把缓冲区里的日志全部刷出去 防丢
+
+	middleware.InitLogger(zapLogger)
+
 	db, err := repository.NewDB() //建立数据库连接
 	if err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
@@ -21,8 +33,8 @@ func main() {
 		log.Fatal("缺少 JWT_SECRET，请检查 .env")
 	}
 
-	userRepo := repository.NewUserRepository(db) //创建用户仓库
-	userSvc := service.NewUserService(userRepo) //创建用户服务
+	userRepo := repository.NewUserRepository(db)   //创建用户仓库
+	userSvc := service.NewUserService(userRepo)    //创建用户服务
 	userHandler := handler.NewUserHandler(userSvc) //创建用户处理器（这里三个是单向向下的依赖关系）
 
 	r := router.SetupRouter(userHandler)
