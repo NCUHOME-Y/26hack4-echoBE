@@ -28,13 +28,12 @@ func SetupRouter(userHandler *handler.UserHandler, meHandler *handler.MeHandler)
 		// 除 auth 和 ping 外全部需登录，中间件挂组上
 		authed := api.Group("", middleware.JWTAuth())
 		{
-			authed.GET("/users/me", userHandler.WhoAmI)
-
-			me := authed.Group("/me")
-			{
-				me.GET("/profile", meHandler.Profile)       //"我的"页资料
-				me.PATCH("/avatar", meHandler.UpdateAvatar) //换头像
-			}
+			// /api/users/me 资源组：当前用户资料与头像（对齐接口文档 §3.4 与路径风格）
+		usersMe := authed.Group("/users/me")
+		{
+			usersMe.GET("", meHandler.Profile)               //当前用户完整资料
+			usersMe.PATCH("/avatar", meHandler.UpdateAvatar) //换头像
+		}
 		}
 	}
 

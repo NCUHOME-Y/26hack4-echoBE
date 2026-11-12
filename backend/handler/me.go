@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"errors"
+
 	"echo/model"
 	"echo/service"
 
@@ -35,6 +37,10 @@ func (h *MeHandler) UpdateAvatar(c *gin.Context) {
 	}
 	userID := c.GetInt64("userID")
 	if err := h.meSvc.UpdateAvatar(c.Request.Context(), userID, req.AvatarID); err != nil {
+		if errors.Is(err, model.ErrInvalidAvatar) { //格式不对是调用方的错 400
+			Error(c, 400, "参数不合法：avatar_id 格式应为 avatar-N")
+			return
+		}
 		Error(c, 500, "更新头像失败")
 		return
 	}
