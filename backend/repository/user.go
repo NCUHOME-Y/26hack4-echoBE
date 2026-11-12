@@ -54,3 +54,13 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, er
 	}
 	return &u, nil
 }
+func (r *UserRepository) UpdateAvatarReq(ctx context.Context, id int64, fields map[string]interface{}) error {
+	res := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(fields)
+	if res.Error != nil {
+		return fmt.Errorf("更新用户头像失败: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return model.ErrUserNotFound //没有影响任何 说明这个人不存在
+	}
+	return nil
+}

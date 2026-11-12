@@ -23,3 +23,12 @@ func (s *MeService) GetProfile(ctx context.Context, userID int64) (*model.User, 
 	u.FillLevel() //exp->level/level_progress
 	return u, nil
 }
+
+// UpdateAvatar换新头像 直接生效的
+func (s *MeService) UpdateAvatar(ctx context.Context, userID int64, avatarID string) error {
+	//只接受avatar-N格式 防止随便塞个URL进来
+	if len(avatarID) < 8 || avatarID[:7] != "avatar-" {
+		return model.ErrInvalidAvatarID
+	}
+	return s.userRepo.UpdateAvatarReq(ctx, userID, map[string]interface{}{"avatar": avatarID})
+}
