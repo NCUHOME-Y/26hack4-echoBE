@@ -51,6 +51,12 @@ func main() {
 
 	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处，不用再去动 SetupRouter 的签名
 	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler}
+	questionRepo := repository.NewQuestionRepository(db)
+	questionSvc := service.NewQuestionService(questionRepo, userRepo)
+	questionHandler := handler.NewQuestionHandler(questionSvc)
+
+	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处，不用再去动 SetupRouter 的签名
+	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Question: questionHandler}
 
 	r := router.SetupRouter(handlers)
 	if err := r.Run(":8080"); err != nil {

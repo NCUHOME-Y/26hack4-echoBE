@@ -15,4 +15,7 @@ type Handlers struct {
 	User *UserHandler
 	Me   *MeHandler
 	Vote *VoteHandler
+	User     *UserHandler
+	Me       *MeHandler
+	Question *QuestionHandler
 }
