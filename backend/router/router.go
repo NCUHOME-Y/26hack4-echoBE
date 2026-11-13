@@ -34,6 +34,12 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				usersMe.GET("", h.Me.Profile)               //当前用户完整资料
 				usersMe.PATCH("/avatar", h.Me.UpdateAvatar) //换头像
 			}
+
+			// /api/questions 资源组：发布问题（详情、争议列表后续继续挂这
+			questions := authed.Group("/questions")
+			{
+				questions.POST("", h.Question.Create) //发布问题与选项
+			}
 		}
 	}
 

@@ -33,3 +33,15 @@ func (q *Question) IsExpired() bool { return q.ExpiresAt.Before(time.Now()) }
 
 // 还在作答窗口内：未关闭且未过期（已结算的题 status 一定是 closed，不用再判一次）
 func (q *Question) IsLive() bool { return q.Status == StatusOpen && !q.IsExpired() }
+
+//CreateQuestionReq发布问题的请求体
+type CreateQuestionReq struct {
+	Description   string        `json:"description"`
+	Options       []OptionLabel `json:"options"`
+	DurationHours int           `json:"duration_hours"`
+}
+
+//OptionLabel选项入参：是对象数组 不是字符串数组！
+type OptionLabel struct {
+	Label string `json:"label"`
+}

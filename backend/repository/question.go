@@ -18,10 +18,10 @@ func NewQuestionRepository(db *gorm.DB) *QuestionRepository {
 	return &QuestionRepository{db: db}
 }
 
-// GetByID 根据问题 ID 查询问题
+// GetByID根据问题ID 查询问题
 func (r *QuestionRepository) GetByID(ctx context.Context, id int64) (*model.Question, error) {
 	var q model.Question
-	err := r.db.WithContext(ctx).First(&q, id).Error //主键查询走 First 的字符串/整数简写形式
+	err := r.db.WithContext(ctx).First(&q, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, model.ErrQuestionNotFound
 	}
@@ -29,4 +29,29 @@ func (r *QuestionRepository) GetByID(ctx context.Context, id int64) (*model.Ques
 		return nil, fmt.Errorf("查询问题失败: %w", err)
 	}
 	return &q, nil
+}
+
+// CreateWithOptions问题与选项在同一事务内插入 失败整体回滚
+func (r *QuestionRepository) CreateWithOptions(ctx context.Context, q *model.Question, labels []string) ([]model.Option, error) {
+	opts := make([]model.Option, 0, len(labels))
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(q).Error; err != nil {
+			return fmt.Errorf("创建问题失败: %w", err)
+		}
+		for i, label := range labels {
+			opts = append(opts, model.Option{
+				QuestionID: q.ID,
+				Label:      label,
+				SortNo:     int16(i + 1),
+			})
+		}
+		if err := tx.Create(&opts).Error; err != nil {
+			return fmt.Errorf("创建选项失败: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return opts, nil
 }
