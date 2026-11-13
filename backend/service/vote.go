@@ -25,7 +25,7 @@ func NewVoteService(questionRepo *repository.QuestionRepository, optionRepo *rep
 	}
 }
 
-// CastVote 提交投票。步 2 只做"这道题现在能不能被我投"，还不查选项归属、不插票、不算占比
+// CastVote 提交投票前的全部校验
 func (s *VoteService) CastVote(ctx context.Context, questionID, userID, optionID int64) error {
 	//查询问题
 	q, err := s.questionRepo.GetByID(ctx, questionID)
@@ -41,6 +41,41 @@ func (s *VoteService) CastVote(ctx context.Context, questionID, userID, optionID
 	//禁止给自己提的题投票
 	if q.AskerID == userID {
 		return model.ErrOwnQuestionVote
+	}
+
+	//选项必须属于这道题
+	opts, err := s.optionRepo.ListByQuestion(ctx, questionID)
+	if err != nil {
+		return err
+	}
+	//判断提交的选项是否属于这道题
+	matched := false
+	for _, o := range opts {
+		if o.ID == optionID {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return model.ErrOptionNotInQuestion
+	}
+
+	//查我是不是已经投过，避免重复投票
+	v, err := s.voteRepo.GetByQuestionAndUser(ctx, questionID, userID)
+	if err != nil {
+		return err
+	}
+	if v != nil {
+		return model.ErrAlreadyVoted
+	}
+
+	//查询用户是否跳过
+	skipped, err := s.skipRepo.Exists(ctx, questionID, userID)
+	if err != nil {
+		return err
+	}
+	if skipped {
+		return model.ErrQuestionSkipped
 	}
 
 	return nil

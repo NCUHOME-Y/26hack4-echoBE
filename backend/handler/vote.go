@@ -40,12 +40,14 @@ func (h *VoteHandler) Create(c *gin.Context) {
 	//从上下文中获取 userID（JWTAuth 中间件已经放进去了）
 	userID := c.GetInt64("userID")
 
-	//调 Service 做池子校验
+	//调 Service 做全部校验
 	if err := h.voteSvc.CastVote(c.Request.Context(), questionID, userID, req.OptionID); err != nil {
+		//按状态码分组
 		switch {
-		case errors.Is(err, model.ErrQuestionNotFound):
+		case errors.Is(err, model.ErrQuestionNotFound), errors.Is(err, model.ErrOptionNotInQuestion):
 			Error(c, http.StatusNotFound, err.Error())
-		case errors.Is(err, model.ErrQuestionClosed), errors.Is(err, model.ErrOwnQuestionVote):
+		case errors.Is(err, model.ErrQuestionClosed), errors.Is(err, model.ErrOwnQuestionVote),
+			errors.Is(err, model.ErrAlreadyVoted), errors.Is(err, model.ErrQuestionSkipped):
 			Error(c, http.StatusConflict, err.Error())
 		default: //剩下的都是查库失败之类的真故障，不能当成校验不通过
 			log.Printf("投票校验失败 questionID=%d userID=%d err=%v", questionID, userID, err)
@@ -54,7 +56,7 @@ func (h *VoteHandler) Create(c *gin.Context) {
 		return
 	}
 
-	//TODO 步 3 接选项归属与重复/跳过检查，步 4 插票，步 5 算占比
-	log.Printf("投票：池子校验通过，插票未实现 questionID=%d userID=%d optionID=%d", questionID, userID, req.OptionID)
+	//TODO 步 4 在这里开事务插票，步 5 补上占比并改成 201
+	log.Printf("投票：校验全部通过，插票未实现 questionID=%d userID=%d optionID=%d", questionID, userID, req.OptionID)
 	Error(c, http.StatusInternalServerError, "投票失败，请稍后重试")
 }
