@@ -12,3 +12,5 @@ var ErrOptionNotInQuestion = errors.New("选项不属于该问题") //404，投�
 var ErrAlreadyVoted = errors.New("你已经投过这一题了")       //409，重复投票
 var ErrQuestionSkipped = errors.New("你已放弃这一题的作答权")  //409，跳过之后再来投票
 var ErrQuestionClosed = errors.New("这道题已经结束，不能再投票") //409，已关闭或已过期
+var ErrOwnQuestionVote = errors.New("自己提的题不能投票") //409
+var ErrOwnQuestionSkip = errors.New("自己提的题不用跳过") //409

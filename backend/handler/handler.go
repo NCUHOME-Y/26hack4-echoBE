@@ -14,4 +14,5 @@ func NewUserHandler(svc *service.UserService) *UserHandler {
 type Handlers struct {
 	User *UserHandler
 	Me   *MeHandler
+	Vote *VoteHandler
 }

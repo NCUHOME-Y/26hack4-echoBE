@@ -28,11 +28,17 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 		// 除 auth 和 ping 外全部需登录，中间件挂组上
 		authed := api.Group("", middleware.JWTAuth())
 		{
-			// /api/users/me 资源组：当前用户资料与头像（对齐接口文档 §3.4 与路径风格）
+			// /api/users/me 资源组：当前用户资料与头像
 			usersMe := authed.Group("/users/me")
 			{
 				usersMe.GET("", h.Me.Profile)               //当前用户完整资料
 				usersMe.PATCH("/avatar", h.Me.UpdateAvatar) //换头像
+			}
+
+			// /api/questions 资源组：投票（详情、抽题、跳过、争议列表后续继续挂在这里）
+			questions := authed.Group("/questions")
+			{
+				questions.POST("/:id/votes", h.Vote.Create) //提交投票
 			}
 		}
 	}
