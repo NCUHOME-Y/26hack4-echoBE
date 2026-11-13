@@ -39,7 +39,10 @@ func main() {
 	meSvc := service.NewMeService(userRepo)        //创建我的服务
 	meHandler := handler.NewMeHandler(meSvc)
 
-	r := router.SetupRouter(userHandler, meHandler)
+	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处，不用再去动 SetupRouter 的签名
+	handlers := &handler.Handlers{User: userHandler, Me: meHandler}
+
+	r := router.SetupRouter(handlers)
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("HTTP 服务启动失败: %v", err)
 	}
