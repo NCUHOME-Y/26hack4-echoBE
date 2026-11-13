@@ -28,3 +28,8 @@ func (r *SkipRepository) Exists(ctx context.Context, questionID, userID int64) (
 	}
 	return n > 0, nil
 }
+
+// WithTx 返回一个绑到事务的副本
+func (r *SkipRepository) WithTx(tx *gorm.DB) *SkipRepository {
+	return &SkipRepository{db: tx}
+}
