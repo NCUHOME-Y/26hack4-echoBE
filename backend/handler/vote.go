@@ -40,8 +40,9 @@ func (h *VoteHandler) Create(c *gin.Context) {
 	//从上下文中获取 userID（JWTAuth 中间件已经放进去了）
 	userID := c.GetInt64("userID")
 
-	//调 Service 做全部校验
-	if err := h.voteSvc.CastVote(c.Request.Context(), questionID, userID, req.OptionID); err != nil {
+	//调 Service 做校验、插票和聚合
+	result, err := h.voteSvc.CastVote(c.Request.Context(), questionID, userID, req.OptionID)
+	if err != nil {
 		//按状态码分组
 		switch {
 		case errors.Is(err, model.ErrQuestionNotFound), errors.Is(err, model.ErrOptionNotInQuestion):
@@ -56,7 +57,5 @@ func (h *VoteHandler) Create(c *gin.Context) {
 		return
 	}
 
-	//TODO 步 4 在这里开事务插票，步 5 补上占比并改成 201
-	log.Printf("投票：校验全部通过，插票未实现 questionID=%d userID=%d optionID=%d", questionID, userID, req.OptionID)
-	Error(c, http.StatusInternalServerError, "投票失败，请稍后重试")
+	Created(c, result) //201，响应里直接带最新占比
 }

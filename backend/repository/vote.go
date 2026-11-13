@@ -8,6 +8,7 @@ import (
 	"echo/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type VoteRepository struct {
@@ -65,3 +66,37 @@ func (r *VoteRepository) CountByOption(ctx context.Context, questionID int64) (m
 	}
 	return counts, nil
 } //注意：没有票的选项不会出现在数据库聚合结果中，因此 service 层需要给缺失选项补 0
+
+// WithTx 返回一个绑到事务的仓库副本
+func (r *VoteRepository) WithTx(tx *gorm.DB) *VoteRepository {
+	return &VoteRepository{db: tx}
+}
+
+// Cast 在一个事务里完成"锁题 → 查跳过 → 插票"（下面这一块涉及到并发和锁，很大部分都依赖AI了）
+func (r *VoteRepository) Cast(ctx context.Context, questionID, userID, optionID int64, skips *SkipRepository) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		//锁住这道题，让同一题上的投票请求排队，而不是各查各的快照
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model.Question{}, questionID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.ErrQuestionNotFound
+			}
+			return fmt.Errorf("锁定问题失败: %w", err)
+		}
+
+		//再次检查跳过状态，多并发中容易出现错误
+		skipped, err := skips.WithTx(tx).Exists(ctx, questionID, userID)
+		if err != nil {
+			return err
+		}
+		if skipped {
+			return model.ErrQuestionSkipped
+		}
+
+		//插入投票
+		return r.WithTx(tx).Create(ctx, &model.Vote{
+			QuestionID: questionID,
+			UserID:     userID,
+			OptionID:   optionID,
+		})
+	})
+}
