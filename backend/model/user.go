@@ -18,7 +18,7 @@ type User struct {
 
 // 注册的请求体，只声明客户端该传的字段
 type RegisterRequest struct {
-	Account  string `json:"account" binding:"required,min=3,max=7,alphanum"` //账号 3-7 位（评审确认，不是 64），alphanum 拦掉字母数字以外的字符
+	Account  string `json:"account" binding:"required,min=3,max=64,alphanum"` //账号 3-64 位，alphanum 拦掉字母数字以外的字符
 	Nickname string `json:"nickname" binding:"required,max=7"` //PRD 规定昵称最多 7 个字符，中英文都按一个字符算
 	Password string `json:"password" binding:"required,min=8,max=64,alphanum"` //alphanum默认正则表达式，只允许大小写字母和数字，保证64字节，不会撞上bcrypt的72字节上限
 }
