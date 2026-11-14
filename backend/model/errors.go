@@ -19,3 +19,4 @@ var ErrInvalidDescription = errors.New("问题描述不合法")
 var ErrInvalidOptionCount = errors.New("选项数量不合法")
 var ErrInvalidOptionLabel = errors.New("选项文字不合法")
 var ErrInvalidDuration = errors.New("结算档位不合法")
+var ErrInvalidReplyContent = errors.New("评论内容不合法") //400，发表回复，binding 之后还要按 trim 结果再判一次

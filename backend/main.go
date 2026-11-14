@@ -57,8 +57,13 @@ func main() {
 	questionSvc := service.NewQuestionService(questionRepo, optionRepo, voteRepo, skipRepo, userRepo)
 	questionHandler := handler.NewQuestionHandler(questionSvc)
 
+	//创建评论区的服务与handler
+	replyRepo := repository.NewReplyRepository(db)
+	replySvc := service.NewReplyService(questionRepo, replyRepo, userRepo)
+	replyHandler := handler.NewReplyHandler(replySvc)
+
 	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处
-	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler}
+	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler, Reply: replyHandler}
 
 	r := router.SetupRouter(handlers)
 	if err := r.Run(":8080"); err != nil {
