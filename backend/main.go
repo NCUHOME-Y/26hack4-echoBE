@@ -49,12 +49,16 @@ func main() {
 	//创建投票模块的handler
 	voteHandler := handler.NewVoteHandler(voteSvc)
 
+	//创建跳过作答权的服务与handler
+	skipSvc := service.NewSkipService(questionRepo, voteRepo, skipRepo)
+	skipHandler := handler.NewSkipHandler(skipSvc)
+
 	//创建发布问题的服务与handler
 	questionSvc := service.NewQuestionService(questionRepo, optionRepo, voteRepo, skipRepo, userRepo)
 	questionHandler := handler.NewQuestionHandler(questionSvc)
 
 	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处
-	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Question: questionHandler}
+	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler}
 
 	r := router.SetupRouter(handlers)
 	if err := r.Run(":8080"); err != nil {

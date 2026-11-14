@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"echo/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type SkipRepository struct {
@@ -32,4 +34,14 @@ func (r *SkipRepository) Exists(ctx context.Context, questionID, userID int64) (
 // WithTx 返回一个绑到事务的副本
 func (r *SkipRepository) WithTx(tx *gorm.DB) *SkipRepository {
 	return &SkipRepository{db: tx}
+}
+
+// CreateOrTouch 落下跳过记录，返回是否首次插入。
+func (r *SkipRepository) CreateOrTouch(ctx context.Context, questionID, userID int64) (bool, error) {
+	res := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}). //冲突不会报错，因为冲突代表已经跳过过了
+		Create(&model.QuestionSkip{QuestionID: questionID, UserID: userID, SkippedAt: time.Now()})
+	if res.Error != nil {
+		return false, fmt.Errorf("写入跳过记录失败: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil //判断是否为第一次跳过
 }

@@ -42,6 +42,7 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				questions.GET("/random", h.Question.Random) //随机抽一题，静态路径优先于下面的 :id
 				questions.GET("/:id", h.Question.Detail)    //问题详情与实时占比
 				questions.POST("/:id/votes", h.Vote.Create) //提交投票
+				questions.POST("/:id/skips", h.Skip.Create) //跳过这题，永久放弃作答权
 
 			}
 		}
