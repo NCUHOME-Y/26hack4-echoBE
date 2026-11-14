@@ -191,9 +191,9 @@ func (s *QuestionService) GetDetail(ctx context.Context, questionID, userID int6
 	// 6.can_vote=在窗口内+没投过+没跳过+不是自己的题（IsLive已含未关闭、未过期）
 	canVote := q.IsLive() && myV == nil && !skipped && q.AskerID != userID
 
-	// 7.对外只暴露open/closed：seed数据里有status='contested'的历史题
-	status := q.Status
-	if status != model.StatusOpen {
+	// 7.对外只暴露open/closed，判据与投票接口共用IsLive：不在作答窗口内（已关闭、已过期）一律closed，
+	status := model.StatusOpen
+	if !q.IsLive() {
 		status = model.StatusClosed
 	}
 

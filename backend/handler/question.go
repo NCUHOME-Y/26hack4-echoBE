@@ -57,7 +57,8 @@ func (h *QuestionHandler) Create(c *gin.Context) {
 func (h *QuestionHandler) Detail(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
-		Error(c, http.StatusBadRequest, "参数不合法：问题ID必须是正整数")
+		//非正整数的ID就是库里没有这题，按404走
+		Error(c, http.StatusNotFound, model.ErrQuestionNotFound.Error())
 		return
 	}
 
