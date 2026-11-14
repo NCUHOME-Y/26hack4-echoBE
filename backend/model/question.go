@@ -31,8 +31,8 @@ func (q *Question) IsSettled() bool { return q.SettledAt != nil }
 // 截止时间是否已过
 func (q *Question) IsExpired() bool { return q.ExpiresAt.Before(time.Now()) }
 
-// 还在作答窗口内：未关闭且未过期（已结算的题 status 一定是 closed，不用再判一次）
-func (q *Question) IsLive() bool { return q.Status == StatusOpen && !q.IsExpired() }
+// 还在作答窗口内：未关闭、未过期、且没结算过。已结算一定要判进来，
+func (q *Question) IsLive() bool { return q.Status == StatusOpen && !q.IsExpired() && !q.IsSettled() }
 
 //CreateQuestionReq发布问题的请求体
 type CreateQuestionReq struct {

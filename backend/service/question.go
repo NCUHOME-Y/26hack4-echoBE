@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -46,19 +45,11 @@ type QuestionDetail struct {
 	ContestedAt   *time.Time      `json:"contested_at"`
 	FinalOptionID *int64          `json:"final_option_id"`
 	OptionCount   int16           `json:"option_count"`
-	TotalVotes    int             `json:"total_votes"`
+	TotalVotes    int64           `json:"total_votes"`
 	CanVote       bool            `json:"can_vote"`
 	MyVote        *MyVote         `json:"my_vote"`
 	Asker         model.UserBrief `json:"asker"`
-	Options       []OptionBrief   `json:"options"`
-}
-
-type OptionBrief struct {
-	ID      int64   `json:"id"`
-	Label   string  `json:"label"`
-	SortNo  int16   `json:"sort_no"`
-	Votes   int     `json:"votes"`
-	Percent float64 `json:"percent"`
+	Options       []OptionView    `json:"options"`
 }
 
 type MyVote struct {
@@ -94,7 +85,7 @@ func (s *QuestionService) Create(ctx context.Context, userID int64, req model.Cr
 		return nil, model.ErrInvalidDuration
 	}
 
-	// 5.提问者必须存在（token有效但账号被删的情况）（问的ai,我没想到这个
+	// 5.提问者必须存在（token有效但账号已被删的情况）
 	asker, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -103,7 +94,7 @@ func (s *QuestionService) Create(ctx context.Context, userID int64, req model.Cr
 	q := &model.Question{
 		AskerID:     userID,
 		Description: desc,
-		Status:      "open", //问的ai:必须显式写：零值 "" 会覆盖 DB DEFAULT 并撞 CHECK 约束
+		Status:      model.StatusOpen, //必须显式写：零值 "" 会覆盖 DB DEFAULT 并撞 CHECK 约束
 		ExpiresAt:   time.Now().Add(time.Duration(req.DurationHours) * time.Hour),
 		OptionCount: int16(len(labels)),
 	}
@@ -126,11 +117,11 @@ func (s *QuestionService) Create(ctx context.Context, userID int64, req model.Cr
 		TotalVotes:    0,     //刚发布默认投票数为0
 		CanVote:       false, //自己的题不能投
 		MyVote:        nil,
-		Asker:         model.NewUserBrief(asker),         // 替代原来那段 AskerBrief{...}
-		Options:       make([]OptionBrief, 0, len(opts)), //空切片而非nil 保证序列化成[]不是null
+		Asker:         model.NewUserBrief(asker),        // 替代原来那段 AskerBrief{...}
+		Options:       make([]OptionView, 0, len(opts)), //空切片而非nil 保证序列化成[]不是null
 	}
 	for _, o := range opts {
-		detail.Options = append(detail.Options, OptionBrief{
+		detail.Options = append(detail.Options, OptionView{
 			ID:      o.ID,
 			Label:   o.Label,
 			SortNo:  o.SortNo,
@@ -188,7 +179,7 @@ func (s *QuestionService) GetDetail(ctx context.Context, questionID, userID int6
 		return nil, err
 	}
 
-	// 6.can_vote=在窗口内+没投过+没跳过+不是自己的题（IsLive已含未关闭、未过期）
+	// 6.can_vote=在窗口内+没投过+没跳过+不是自己的题（IsLive已含未关闭、未过期、未结算）
 	canVote := q.IsLive() && myV == nil && !skipped && q.AskerID != userID
 
 	// 7.对外只暴露open/closed，判据与投票接口共用IsLive：不在作答窗口内（已关闭、已过期）一律closed，
@@ -207,28 +198,24 @@ func (s *QuestionService) GetDetail(ctx context.Context, questionID, userID int6
 		ContestedAt:   q.ContestedAt,
 		FinalOptionID: q.FinalOptionID,
 		OptionCount:   q.OptionCount,
-		TotalVotes:    int(totalVotes),
+		TotalVotes:    totalVotes,
 		CanVote:       canVote,
 		Asker:         model.NewUserBrief(asker),
-		Options:       make([]OptionBrief, 0, len(opts)),
+		Options:       make([]OptionView, 0, len(opts)),
 	}
 	if myV != nil {
 		detail.MyVote = &MyVote{OptionID: myV.OptionID, CreatedAt: myV.CreatedAt}
 	}
 
+	//percent 复用投票模块那一个函数，两个接口必须给出一模一样的数字
 	for _, o := range opts {
 		votes := counts[o.ID]
-		var percent float64
-		if totalVotes > 0 {
-			percent = math.Round(float64(votes)/float64(totalVotes)*1000) / 10
-			//这个是问ai怎么转换的：53.3333 -> 533.33 -> Round 533 -> /10 = 53.3
-		}
-		detail.Options = append(detail.Options, OptionBrief{
+		detail.Options = append(detail.Options, OptionView{
 			ID:      o.ID,
 			Label:   o.Label,
 			SortNo:  o.SortNo,
-			Votes:   int(votes),
-			Percent: percent,
+			Votes:   votes,
+			Percent: percent(votes, totalVotes),
 		})
 	}
 

@@ -33,11 +33,13 @@ func (r *QuestionRepository) GetByID(ctx context.Context, id int64) (*model.Ques
 
 // CreateWithOptions问题与选项在同一事务内插入 失败整体回滚
 func (r *QuestionRepository) CreateWithOptions(ctx context.Context, q *model.Question, labels []string) ([]model.Option, error) {
-	opts := make([]model.Option, 0, len(labels))
+	var opts []model.Option
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(q).Error; err != nil {
 			return fmt.Errorf("创建问题失败: %w", err)
 		}
+		//每次进闭包都重建，事务重试时不会累积出重复选项
+		opts = make([]model.Option, 0, len(labels))
 		for i, label := range labels {
 			opts = append(opts, model.Option{
 				QuestionID: q.ID,
