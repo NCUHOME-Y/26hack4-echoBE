@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"echo/model"
 	"echo/repository"
@@ -100,4 +102,41 @@ func (s *ReplyService) List(ctx context.Context, questionID, userID int64) (*Rep
 	}
 
 	return &ReplyList{List: list, Returned: int64(len(list)), Total: total}, nil
+}
+
+// Create 发表一条评论
+func (s *ReplyService) Create(ctx context.Context, questionID, userID int64, content string) (*ReplyView, error) {
+	//题不存在不允许保存
+	if _, err := s.questionRepo.GetByID(ctx, questionID); err != nil {
+		return nil, err
+	}
+
+	//去除首尾的空格，避免把无意义的东西保存到数据库里面
+	content = strings.TrimSpace(content)
+	//规定评论内容长度 1-32 字符，超出范围直接返回错误
+	if n := utf8.RuneCountInString(content); n < 1 || n > 32 {
+		return nil, model.ErrInvalidReplyContent
+	}
+
+	//查询当前的用户信息
+	u, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	//创建评论模型
+	rp := &model.Reply{QuestionID: questionID, UserID: userID, Content: content}
+	//写入数据库
+	if err := s.replyRepo.Create(ctx, rp); err != nil {
+		return nil, err
+	}
+
+	//组装对外的评论结构体
+	return &ReplyView{
+		ID:        rp.ID,
+		Content:   rp.Content,
+		CreatedAt: rp.CreatedAt,
+		IsMine:    true, //刚发的必然是自己的
+		Author:    model.NewUserBrief(u),
+	}, nil
 }

@@ -45,3 +45,41 @@ func (h *ReplyHandler) List(c *gin.Context) {
 
 	Success(c, result)
 }
+
+// Create 发表回复 POST /api/questions/:id/replies
+func (h *ReplyHandler) Create(c *gin.Context) {
+	questionID, err := strconv.ParseInt(c.Param("id"), 10, 64) //先判路径，与列表接口同一个顺序
+	if err != nil || questionID <= 0 {
+		Error(c, http.StatusNotFound, model.ErrQuestionNotFound.Error())
+		return
+	}
+
+	//解析请求体，获取评论内容
+	var req model.CreateReplyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("发表评论：请求体解析失败 questionID=%d err=%v", questionID, err)
+		Error(c, http.StatusBadRequest, "参数不合法：评论内容 1-32 字符")
+		return
+	}
+
+	userID := c.GetInt64("userID")
+
+	//调用业务层，创建评论
+	view, err := h.replySvc.Create(c.Request.Context(), questionID, userID, req.Content)
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrQuestionNotFound):
+			Error(c, http.StatusNotFound, err.Error())
+		case errors.Is(err, model.ErrInvalidReplyContent):
+			Error(c, http.StatusBadRequest, "参数不合法：评论内容 1-32 字符")
+		case errors.Is(err, model.ErrUserNotFound):
+			Error(c, http.StatusUnauthorized, "账号不存在或已注销，请重新登录") //token有效但账号被删，与发布问题同一口径
+		default:
+			log.Printf("发表评论失败 questionID=%d userID=%d err=%v", questionID, userID, err)
+			Error(c, http.StatusInternalServerError, "发送失败，请稍后重试")
+		}
+		return
+	}
+
+	Created(c, view)
+}
