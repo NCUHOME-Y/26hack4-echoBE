@@ -39,7 +39,9 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 			questions := authed.Group("/questions")
 			{
 				questions.POST("", h.Question.Create)       //发布问题与选项
+				questions.GET("/:id", h.Question.Detail)    //问题详情与实时占比
 				questions.POST("/:id/votes", h.Vote.Create) //提交投票
+
 			}
 		}
 	}
