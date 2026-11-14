@@ -35,7 +35,7 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				usersMe.PATCH("/avatar", h.Me.UpdateAvatar) //换头像
 			}
 
-			// /api/questions 资源组：发布、抽题、详情、投票（跳过、争议列表后续继续挂这里）
+			// /api/questions 资源组：发布、抽题、详情、投票、跳过、评论列表（争议列表、结算、发表与删除评论后续挂这里）
 			questions := authed.Group("/questions")
 			{
 				questions.POST("", h.Question.Create)       //发布问题与选项
@@ -43,6 +43,7 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				questions.GET("/:id", h.Question.Detail)    //问题详情与实时占比
 				questions.POST("/:id/votes", h.Vote.Create) //提交投票
 				questions.POST("/:id/skips", h.Skip.Create) //跳过这题，永久放弃作答权
+				questions.GET("/:id/replies", h.Reply.List) //评论列表，最多返回最新 50 条
 
 			}
 		}
