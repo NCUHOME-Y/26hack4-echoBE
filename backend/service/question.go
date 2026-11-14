@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -12,11 +13,26 @@ import (
 
 type QuestionService struct {
 	questionRepo *repository.QuestionRepository
+	optionRepo   *repository.OptionRepository
+	voteRepo     *repository.VoteRepository
+	skipRepo     *repository.SkipRepository
 	userRepo     *repository.UserRepository
 }
 
-func NewQuestionService(qr *repository.QuestionRepository, ur *repository.UserRepository) *QuestionService {
-	return &QuestionService{questionRepo: qr, userRepo: ur}
+func NewQuestionService(
+	questionRepo *repository.QuestionRepository,
+	optionRepo *repository.OptionRepository,
+	voteRepo *repository.VoteRepository,
+	skipRepo *repository.SkipRepository,
+	userRepo *repository.UserRepository,
+) *QuestionService {
+	return &QuestionService{
+		questionRepo: questionRepo,
+		optionRepo:   optionRepo,
+		voteRepo:     voteRepo,
+		skipRepo:     skipRepo,
+		userRepo:     userRepo,
+	}
 }
 
 // questiondetail发布/详情接口的响应体
@@ -130,4 +146,91 @@ func validDuration(h int) bool {
 		return true
 	}
 	return false
+}
+
+// getDetail获取问题详情和实时占比
+func (s *QuestionService) GetDetail(ctx context.Context, questionID, userID int64) (*QuestionDetail, error) {
+	// 1.问题不存在直接返回哨兵
+	q, err := s.questionRepo.GetByID(ctx, questionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2.选项按 sort_no 升序
+	opts, err := s.optionRepo.ListByQuestion(ctx, questionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3.每个选项的票数：没票的选项不出现在map里 下面遍历opts时要补0
+	counts, err := s.voteRepo.CountByOption(ctx, questionID)
+	if err != nil {
+		return nil, err
+	}
+	var totalVotes int64
+	for _, c := range counts {
+		totalVotes += c
+	}
+
+	// 4.我投过没、跳过没
+	myV, err := s.voteRepo.GetByQuestionAndUser(ctx, questionID, userID)
+	if err != nil {
+		return nil, err
+	}
+	skipped, err := s.skipRepo.Exists(ctx, questionID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 5.提问者资料
+	asker, err := s.userRepo.GetByID(ctx, q.AskerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 6.can_vote=在窗口内+没投过+没跳过+不是自己的题（IsLive已含未关闭、未过期）
+	canVote := q.IsLive() && myV == nil && !skipped && q.AskerID != userID
+
+	// 7.对外只暴露open/closed：seed数据里有status='contested'的历史题
+	status := q.Status
+	if status != model.StatusOpen {
+		status = model.StatusClosed
+	}
+
+	detail := &QuestionDetail{
+		ID:            q.ID,
+		Description:   q.Description,
+		Status:        status,
+		ExpiresAt:     q.ExpiresAt,
+		CreatedAt:     q.CreatedAt,
+		SettledAt:     q.SettledAt,
+		ContestedAt:   q.ContestedAt,
+		FinalOptionID: q.FinalOptionID,
+		OptionCount:   q.OptionCount,
+		TotalVotes:    int(totalVotes),
+		CanVote:       canVote,
+		Asker:         model.NewUserBrief(asker),
+		Options:       make([]OptionBrief, 0, len(opts)),
+	}
+	if myV != nil {
+		detail.MyVote = &MyVote{OptionID: myV.OptionID, CreatedAt: myV.CreatedAt}
+	}
+
+	for _, o := range opts {
+		votes := counts[o.ID]
+		var percent float64
+		if totalVotes > 0 {
+			percent = math.Round(float64(votes)/float64(totalVotes)*1000) / 10
+			//这个是问ai怎么转换的：53.3333 -> 533.33 -> Round 533 -> /10 = 53.3
+		}
+		detail.Options = append(detail.Options, OptionBrief{
+			ID:      o.ID,
+			Label:   o.Label,
+			SortNo:  o.SortNo,
+			Votes:   int(votes),
+			Percent: percent,
+		})
+	}
+
+	return detail, nil
 }

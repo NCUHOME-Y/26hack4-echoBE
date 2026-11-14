@@ -50,7 +50,7 @@ func main() {
 	voteHandler := handler.NewVoteHandler(voteSvc)
 
 	//创建发布问题的服务与handler
-	questionSvc := service.NewQuestionService(questionRepo, userRepo)
+	questionSvc := service.NewQuestionService(questionRepo, optionRepo, voteRepo, skipRepo, userRepo)
 	questionHandler := handler.NewQuestionHandler(questionSvc)
 
 	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处

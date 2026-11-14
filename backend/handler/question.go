@@ -7,6 +7,7 @@ import (
 
 	"echo/model"
 	"echo/service"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -50,4 +51,28 @@ func (h *QuestionHandler) Create(c *gin.Context) {
 	}
 
 	Created(c, detail) //201+code:201+msg:"success"
+}
+
+// Detail问题详情与实时占比
+func (h *QuestionHandler) Detail(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(c, http.StatusBadRequest, "参数不合法：问题ID必须是正整数")
+		return
+	}
+
+	userID := c.GetInt64("userID")
+	detail, err := h.questionSvc.GetDetail(c.Request.Context(), id, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrQuestionNotFound):
+			Error(c, http.StatusNotFound, "问题不存在")
+		default:
+			log.Printf("获取问题详情失败 questionID=%d err=%v", id, err)
+			Error(c, http.StatusInternalServerError, "获取问题详情失败")
+		}
+		return
+	}
+
+	Success(c, detail)
 }
