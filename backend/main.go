@@ -39,7 +39,7 @@ func main() {
 	meSvc := service.NewMeService(userRepo)        //创建我的服务
 	meHandler := handler.NewMeHandler(meSvc)
 
-	//创建四个投票模块的数据库连接
+	//创建投票模块的数据库连接
 	questionRepo := repository.NewQuestionRepository(db)
 	optionRepo := repository.NewOptionRepository(db)
 	voteRepo := repository.NewVoteRepository(db)
@@ -49,14 +49,12 @@ func main() {
 	//创建投票模块的handler
 	voteHandler := handler.NewVoteHandler(voteSvc)
 
-	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处，不用再去动 SetupRouter 的签名
-	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler}
-	questionRepo := repository.NewQuestionRepository(db)
+	//创建发布问题的服务与handler
 	questionSvc := service.NewQuestionService(questionRepo, userRepo)
 	questionHandler := handler.NewQuestionHandler(questionSvc)
 
-	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处，不用再去动 SetupRouter 的签名
-	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Question: questionHandler}
+	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处
+	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Question: questionHandler}
 
 	r := router.SetupRouter(handlers)
 	if err := r.Run(":8080"); err != nil {
