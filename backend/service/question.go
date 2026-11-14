@@ -139,13 +139,28 @@ func validDuration(h int) bool {
 	return false
 }
 
-// getDetail获取问题详情和实时占比
+// GetDetail 问题详情与实时占比
 func (s *QuestionService) GetDetail(ctx context.Context, questionID, userID int64) (*QuestionDetail, error) {
-	// 1.问题不存在直接返回哨兵
+	//问题不存在直接返回哨兵
 	q, err := s.questionRepo.GetByID(ctx, questionID)
 	if err != nil {
 		return nil, err
 	}
+	return s.buildDetail(ctx, q, userID) //所以将共同逻辑提取到 buildDetail，统一处理，避免出现不同接口所返回的值不同
+}
+
+// Random 随机抽一题；池子为空返回 nil,nil
+func (s *QuestionService) Random(ctx context.Context, userID int64) (*QuestionDetail, error) {
+	q, err := s.questionRepo.PickRandom(ctx, userID) //随机取题
+	if err != nil || q == nil {
+		return nil, err
+	} //空池也是正常状态
+	return s.buildDetail(ctx, q, userID)
+}
+
+// buildDetail 组装对外的题目视图，详情与抽题共用同一套，占比不会出现第二种算法
+func (s *QuestionService) buildDetail(ctx context.Context, q *model.Question, userID int64) (*QuestionDetail, error) {
+	questionID := q.ID
 
 	// 2.选项按 sort_no 升序
 	opts, err := s.optionRepo.ListByQuestion(ctx, questionID)

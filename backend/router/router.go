@@ -35,10 +35,11 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				usersMe.PATCH("/avatar", h.Me.UpdateAvatar) //换头像
 			}
 
-			// /api/questions 资源组：发布、投票（详情、抽题、跳过、争议列表后续继续挂这里）
+			// /api/questions 资源组：发布、抽题、详情、投票（跳过、争议列表后续继续挂这里）
 			questions := authed.Group("/questions")
 			{
 				questions.POST("", h.Question.Create)       //发布问题与选项
+				questions.GET("/random", h.Question.Random) //随机抽一题，静态路径优先于下面的 :id
 				questions.GET("/:id", h.Question.Detail)    //问题详情与实时占比
 				questions.POST("/:id/votes", h.Vote.Create) //提交投票
 

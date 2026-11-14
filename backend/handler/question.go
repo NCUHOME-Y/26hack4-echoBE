@@ -77,3 +77,19 @@ func (h *QuestionHandler) Detail(c *gin.Context) {
 
 	Success(c, detail)
 }
+
+// Random 随机抽一题
+func (h *QuestionHandler) Random(c *gin.Context) {
+	userID := c.GetInt64("userID") //从JWT中间件中解析出用户ID
+	detail, err := h.questionSvc.Random(c.Request.Context(), userID) //调用service层完成抽题业务
+	if err != nil {
+		log.Printf("抽题失败 userID=%d err=%v", userID, err)
+		Error(c, http.StatusInternalServerError, "抽题失败，请稍后重试")
+		return
+	} //处理数据库错误
+	if detail == nil {
+		c.JSON(http.StatusOK, Response{Code: 200, Msg: "暂时没有可回答的问题", Data: nil})
+		return
+	} //空池也是正常状态
+	Success(c, detail)
+}
