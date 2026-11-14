@@ -57,3 +57,24 @@ func (r *QuestionRepository) CreateWithOptions(ctx context.Context, q *model.Que
 	}
 	return opts, nil
 }
+
+// PickRandom 随机抽一题。池子=未关闭、未过期、未结算，再排除我已投过的、已跳过的、我自己提的。
+func (r *QuestionRepository) PickRandom(ctx context.Context, userID int64) (*model.Question, error) {
+	var qs []model.Question
+	err := r.db.WithContext(ctx).Model(&model.Question{}).
+		Where("status = ? AND expires_at > now() AND settled_at IS NULL", model.StatusOpen). //只查询开放且未过期的问题
+		Where("asker_id <> ?", userID). //排除用户自己的问题
+		Where("id NOT IN (?)", r.db.WithContext(ctx).Model(&model.Vote{}).
+			Select("question_id").Where("user_id = ?", userID)). //排除已经投票的问题
+		Where("id NOT IN (?)", r.db.WithContext(ctx).Model(&model.QuestionSkip{}).
+			Select("question_id").Where("user_id = ?", userID)). //排除已经跳过的问题
+		Order("random()").Limit(1). //随机排序取一条
+		Find(&qs).Error
+	if err != nil {
+		return nil, fmt.Errorf("随机抽题失败: %w", err)
+	}
+	if len(qs) == 0 {
+		return nil, nil
+	} //空池也是允许的，不是错误
+	return &qs[0], nil
+}
