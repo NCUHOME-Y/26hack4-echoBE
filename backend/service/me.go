@@ -10,10 +10,17 @@ import (
 
 type MeService struct {
 	userRepo *repository.UserRepository
+	meRepo   *repository.MeRepository
 }
 
-func NewMeService(userRepo *repository.UserRepository) *MeService {
-	return &MeService{userRepo: userRepo}
+func NewMeService(
+	userRepo *repository.UserRepository,
+	meRepo *repository.MeRepository,
+) *MeService {
+	return &MeService{
+		userRepo: userRepo,
+		meRepo:   meRepo,
+	}
 }
 
 // 查资料+算等级
@@ -36,4 +43,39 @@ func (s *MeService) UpdateAvatar(ctx context.Context, userID int64, avatar strin
 		return model.ErrInvalidAvatar
 	}
 	return s.userRepo.UpdateAvatarReq(ctx, userID, map[string]interface{}{"avatar": avatar})
+}
+
+// ListMyQuestions 查询我发布的问题，统一处理分页边界
+func (s *MeService) ListMyQuestions(
+	ctx context.Context,
+	userID int64,
+	page, pageSize int,
+) (*model.MyQuestionsData, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	offset := (page - 1) * pageSize
+	list, total, err := s.meRepo.ListMyQuestions(
+		ctx,
+		userID,
+		pageSize,
+		offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.MyQuestionsData{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
 }

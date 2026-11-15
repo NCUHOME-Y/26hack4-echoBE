@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 
 	"echo/model"
 	"echo/service"
@@ -61,4 +62,32 @@ func (h *MeHandler) UpdateAvatar(c *gin.Context) {
 		return
 	}
 	Success(c, gin.H{"avatar": req.Avatar})
+}
+
+// ListMyQuestions 获取当前用户发布的问题列表
+func (h *MeHandler) ListMyQuestions(c *gin.Context) {
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if err != nil {
+		pageSize = 20
+	}
+
+	userID := c.GetInt64("userID")
+	data, err := h.meSvc.ListMyQuestions(
+		c.Request.Context(),
+		userID,
+		page,
+		pageSize,
+	)
+	if err != nil {
+		log.Printf("获取我发布的问题列表失败 userID=%d err=%v", userID, err)
+		Error(c, http.StatusInternalServerError, "获取失败")
+		return
+	}
+
+	Success(c, data)
 }

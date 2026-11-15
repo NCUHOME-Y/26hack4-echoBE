@@ -36,7 +36,8 @@ func main() {
 	userRepo := repository.NewUserRepository(db)   //创建用户仓库
 	userSvc := service.NewUserService(userRepo)    //创建用户服务
 	userHandler := handler.NewUserHandler(userSvc) //创建用户处理器（这里三个是单向向下的依赖关系）
-	meSvc := service.NewMeService(userRepo)        //创建我的服务
+	meRepo := repository.NewMeRepository(db)
+	meSvc := service.NewMeService(userRepo, meRepo)
 	meHandler := handler.NewMeHandler(meSvc)
 
 	//创建投票模块的数据库连接
