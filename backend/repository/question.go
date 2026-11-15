@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"echo/model"
 
@@ -77,4 +78,37 @@ func (r *QuestionRepository) PickRandom(ctx context.Context, userID int64) (*mod
 		return nil, nil
 	} //空池也是允许的，不是错误
 	return &qs[0], nil
+}
+
+// ListSettleable 捞出到期了但还没结算的题，交给结算函数逐题处理。
+func (r *QuestionRepository) ListSettleable(ctx context.Context, limit int) ([]model.Question, error) {
+	var list []model.Question
+	err := r.db.WithContext(ctx).
+		Where("expires_at < now() AND settled_at IS NULL"). //同时满足问题已经到了结算时间，但是没有结算
+		Order("expires_at"). //最早过期，最先处理
+		Limit(limit). //避免一次性处理大量问题
+		Find(&list).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询待结算问题失败: %w", err)
+	}
+	return list, nil
+}
+
+// MarkSettled负责结算问题
+func (r *QuestionRepository) MarkSettled(ctx context.Context, questionID int64, finalOptionID *int64, contested bool) (bool, error) {
+	fields := map[string]interface{}{
+		"status":          model.StatusClosed,
+		"settled_at":      time.Now(),
+		"final_option_id": finalOptionID,
+	} //所需要更新的三个字段
+	if contested { 
+		fields["contested_at"] = time.Now()
+	} //不是争议就不写这个字段，让它保持空
+	res := r.db.WithContext(ctx).Model(&model.Question{}).
+		Where("id = ? AND settled_at IS NULL", questionID). //防止被重复结算
+		Updates(fields) //在数据库里面更新状态
+	if res.Error != nil {
+		return false, fmt.Errorf("结算问题失败: %w", res.Error)
+	} //是否抢到结算权
+	return res.RowsAffected > 0, nil //影响 0 行说明被别人抢先结算过了
 }
