@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"time"
 
 	"echo/repository"
 )
@@ -10,6 +13,12 @@ import (
 const (
 	contestedMinVotes    = 30 //总票数大于30
 	contestedMaxGapScore = 15 //前两名百分比相差小于15
+)
+
+// 结算任务的节奏：30 秒一轮，一轮最多处理 50 题。
+const (
+	settleInterval = 30 * time.Second
+	settleBatch    = 50
 )
 
 // SettleService 到期自动结算的业务规则层
@@ -96,6 +105,65 @@ func (s *SettleService) SettleQuestion(ctx context.Context, questionID int64) (*
 		Contested:     contested,
 		Won:           won,
 	}, nil
+}
+
+// SettleDue 扫一轮：捞出到期未结算的题逐题结算，返回真正写入的题数
+func (s *SettleService) SettleDue(ctx context.Context, limit int) (int, error) {
+	//查询未结算的题目
+	list, err := s.questionRepo.ListSettleable(ctx, limit)
+	if err != nil {
+		return 0, err
+	}
+
+	var won int
+	for i := range list {
+		outcome, err := s.SettleQuestion(ctx, list[i].ID)
+		if err != nil {
+			log.Printf("结算任务：单题结算失败 questionID=%d err=%v", list[i].ID, err)
+			continue
+		} //单题数据异常不会阻塞后面的题目
+		if !outcome.Won {
+			continue //被别人抢先结算过了，不算本轮的产出
+		}
+		won++
+		final := "NULL"
+		if outcome.FinalOptionID != nil {
+			final = fmt.Sprint(*outcome.FinalOptionID)
+		}
+		log.Printf("结算任务：已结算 questionID=%d final=%s contested=%v", list[i].ID, final, outcome.Contested)
+	}
+	return won, nil
+}
+
+// Run 后台结算循环：启动先跑一轮补齐欠账
+func (s *SettleService) Run(ctx context.Context) {
+	//创建定时器，每30秒一次
+	ticker := time.NewTicker(settleInterval)
+	defer ticker.Stop()
+
+	s.round(ctx, "启动")
+	//循环跑一轮，直到收到退出信号
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("结算任务：收到退出信号，停止扫描")
+			return
+		case <-ticker.C:
+			s.round(ctx, "定时")
+		}
+	}
+}
+
+// round 跑一轮
+func (s *SettleService) round(ctx context.Context, why string) {
+	won, err := s.SettleDue(ctx, settleBatch)
+	if err != nil { //查询失败只打日志，不终止循环
+		log.Printf("结算任务：%s一轮扫描失败 err=%v", why, err)
+		return
+	}
+	if won > 0 {
+		log.Printf("结算任务：%s一轮结算 %d 题", why, won)
+	}
 }
 
 // gapScore 第一名和第二名差多少个百分点
