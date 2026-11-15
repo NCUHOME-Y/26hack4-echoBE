@@ -58,3 +58,60 @@ func (r *MeRepository) ListMyQuestions(
 
 	return list, total, nil
 }
+
+// ListMyAnswers 查询我投过票的问题 可以按问题文案进行关键词搜索
+func (r *MeRepository) ListMyAnswers(
+	ctx context.Context,
+	userID int64,
+	keyword string,
+	limit, offset int,
+) ([]model.MyAnswerItem, int64, error) {
+	list := make([]model.MyAnswerItem, 0)
+	var total int64
+
+	// Count 和列表共用筛选条件，避免总数与列表条件不一致。
+	baseQuery := func() *gorm.DB {
+		query := r.db.WithContext(ctx).
+			Table("votes AS v").
+			Joins("JOIN questions AS q ON q.id = v.question_id").
+			Where("v.user_id = ?", userID)
+
+		if keyword != "" {
+			query = query.Where(
+				"q.description ILIKE ?",
+				"%"+keyword+"%",
+			)
+		}
+		return query
+	}
+
+	if err := baseQuery().Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("统计我参与的问题失败: %w", err)
+	}
+
+	err := baseQuery().
+		Joins("JOIN options AS o ON o.id = v.option_id AND o.question_id = q.id").
+		Select(`
+			q.id AS question_id,
+			q.description,
+			q.status,
+			v.option_id AS my_option_id,
+			o.label AS my_option_label,
+			q.final_option_id,
+			CASE
+				WHEN q.final_option_id IS NULL THEN NULL
+				ELSE v.option_id = q.final_option_id
+			END AS matched,
+			v.created_at AS voted_at,
+			q.settled_at
+		`).
+		Order("v.created_at DESC, v.id DESC").
+		Limit(limit).
+		Offset(offset).
+		Scan(&list).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询我参与的问题失败: %w", err)
+	}
+
+	return list, total, nil
+}

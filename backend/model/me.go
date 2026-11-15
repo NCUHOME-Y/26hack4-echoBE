@@ -27,3 +27,23 @@ type MyQuestionsData struct {
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
 }
+
+// MyAnswerItem 我投过票的问题记录
+type MyAnswerItem struct {
+	QuestionID    int64      `json:"question_id"`
+	Description   string     `json:"description"`
+	Status        string     `json:"status"`
+	MyOptionID    int64      `json:"my_option_id"`
+	MyOptionLabel string     `json:"my_option_label"`
+	FinalOptionID *int64     `json:"final_option_id"`
+	Matched       *bool      `json:"matched"`
+	VotedAt       time.Time  `json:"voted_at"`
+	SettledAt     *time.Time `json:"settled_at"`
+}
+
+type MyAnswersData struct {
+	List     []MyAnswerItem `json:"list"`
+	Total    int64          `json:"total"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"page_size"`
+}

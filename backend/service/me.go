@@ -79,3 +79,40 @@ func (s *MeService) ListMyQuestions(
 		PageSize: pageSize,
 	}, nil
 }
+
+// ListMyAnswers 查询我投过票的问题 统一处理分页边界
+func (s *MeService) ListMyAnswers(
+	ctx context.Context,
+	userID int64,
+	page, pageSize int,
+	keyword string,
+) (*model.MyAnswersData, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	offset := (page - 1) * pageSize
+	list, total, err := s.meRepo.ListMyAnswers(
+		ctx,
+		userID,
+		keyword,
+		pageSize,
+		offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.MyAnswersData{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}

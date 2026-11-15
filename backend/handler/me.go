@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"echo/model"
 	"echo/service"
@@ -85,6 +87,41 @@ func (h *MeHandler) ListMyQuestions(c *gin.Context) {
 	)
 	if err != nil {
 		log.Printf("获取我发布的问题列表失败 userID=%d err=%v", userID, err)
+		Error(c, http.StatusInternalServerError, "获取失败")
+		return
+	}
+
+	Success(c, data)
+}
+
+// ListMyAnswers 获取当前用户投过票的问题历史
+func (h *MeHandler) ListMyAnswers(c *gin.Context) {
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if err != nil {
+		pageSize = 20
+	}
+
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	if utf8.RuneCountInString(keyword) > 100 {
+		Error(c, http.StatusBadRequest, "参数不合法：关键词最多 100 字符")
+		return
+	}
+
+	userID := c.GetInt64("userID")
+	data, err := h.meSvc.ListMyAnswers(
+		c.Request.Context(),
+		userID,
+		page,
+		pageSize,
+		keyword,
+	)
+	if err != nil {
+		log.Printf("获取我参与的问题失败 userID=%d err=%v", userID, err)
 		Error(c, http.StatusInternalServerError, "获取失败")
 		return
 	}
