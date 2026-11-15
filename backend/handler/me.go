@@ -68,15 +68,7 @@ func (h *MeHandler) UpdateAvatar(c *gin.Context) {
 
 // ListMyQuestions 获取当前用户发布的问题列表
 func (h *MeHandler) ListMyQuestions(c *gin.Context) {
-	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil {
-		page = 1
-	}
-
-	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if err != nil {
-		pageSize = 20
-	}
+	page, pageSize := parsePage(c)
 
 	userID := c.GetInt64("userID")
 	data, err := h.meSvc.ListMyQuestions(
@@ -96,15 +88,7 @@ func (h *MeHandler) ListMyQuestions(c *gin.Context) {
 
 // ListMyAnswers 获取当前用户投过票的问题历史
 func (h *MeHandler) ListMyAnswers(c *gin.Context) {
-	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil {
-		page = 1
-	}
-
-	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if err != nil {
-		pageSize = 20
-	}
+	page, pageSize := parsePage(c)
 
 	keyword := strings.TrimSpace(c.Query("keyword"))
 	if utf8.RuneCountInString(keyword) > 100 {
@@ -127,4 +111,22 @@ func (h *MeHandler) ListMyAnswers(c *gin.Context) {
 	}
 
 	Success(c, data)
+}
+
+// parsePage 统一解析分页参数：解析失败回退默认，越界夹紧到契约允许的区间
+func parsePage(c *gin.Context) (int, int) {
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if err != nil || pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100 //与 openapi 的 maximum:100 对齐，避免一次拉爆
+	}
+
+	return page, pageSize
 }
