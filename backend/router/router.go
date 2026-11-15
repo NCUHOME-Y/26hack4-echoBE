@@ -3,6 +3,8 @@ package router
 import (
 	"echo/handler"
 	"echo/middleware"
+	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -10,8 +12,23 @@ import (
 // SetupRouter 初始化路由，并将各个路由处理函数与对应的中间件绑定
 func SetupRouter(h *handler.Handlers) *gin.Engine {
 	r := gin.New()
+	//panic 兜底：任何一处空指针/越界都不会让进程崩掉，统一返回 JSON 500
+	r.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
+		log.Printf("panic 已恢复：%s %s err=%v", c.Request.Method, c.Request.URL.Path, err)
+		handler.Error(c, http.StatusInternalServerError, "服务端内部错误")
+	}))
 	r.Use(middleware.Cors())
 	r.Use(middleware.Logger())
+
+	r.HandleMethodNotAllowed = true //不开这个开关，NoMethod 永远不会触发
+
+	//路径写错时也返回统一的 {code,msg,data}
+	r.NoRoute(func(c *gin.Context) {
+		handler.Error(c, http.StatusNotFound, "接口不存在")
+	})
+	r.NoMethod(func(c *gin.Context) {
+		handler.Error(c, http.StatusMethodNotAllowed, "请求方法不允许")
+	})
 
 	api := r.Group("/api")
 	{
