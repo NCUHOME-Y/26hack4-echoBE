@@ -31,8 +31,10 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 			// /api/users/me 资源组：当前用户资料与头像
 			usersMe := authed.Group("/users/me")
 			{
-				usersMe.GET("", h.Me.Profile)               //当前用户完整资料
-				usersMe.PATCH("/avatar", h.Me.UpdateAvatar) //换头像
+				usersMe.GET("", h.Me.Profile)                   //当前用户完整资料
+				usersMe.PATCH("/avatar", h.Me.UpdateAvatar)     //换头像
+				usersMe.GET("/questions", h.Me.ListMyQuestions) //获取我发布的问题列表
+				usersMe.GET("/answers", h.Me.ListMyAnswers)     //我投过票的问题历史
 			}
 
 			// /api/questions 资源组：发布、抽题、详情、投票、跳过、评论列表（争议列表、结算、发表与删除评论后续挂这里）
