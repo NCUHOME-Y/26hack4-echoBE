@@ -84,7 +84,11 @@ func main() {
 	go settleSvc.Run(ctx)
 
 	r := router.SetupRouter(handlers)
-	if err := r.Run(":8080"); err != nil {
+	port := os.Getenv("PORT") //监听端口可由部署环境注入
+	if port == "" {
+		port = "8080" //不设就保持原来的写死行为，避免改代码顺带改端口
+	}
+	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("HTTP 服务启动失败: %v", err)
 	}
 }
