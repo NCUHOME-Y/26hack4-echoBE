@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"echo/model"
 	"echo/repository"
 )
 
@@ -21,17 +22,20 @@ const (
 	settleBatch    = 50
 )
 
-// SettleService 到期自动结算的业务规则层
+// SettleService 到期自动结算与提问者公布的业务规则层
 type SettleService struct {
-	questionRepo *repository.QuestionRepository //取题、落结算状态
+	questionRepo *repository.QuestionRepository //取题、落结算状态、补公布最终选择
 	voteRepo     *repository.VoteRepository     //数每个选项的票
+	optionRepo   *repository.OptionRepository   //判提交的选项属不属于这道题
 }
- 
+
 //注入这个业务所需要的repository
-func NewSettleService(questionRepo *repository.QuestionRepository, voteRepo *repository.VoteRepository) *SettleService {
+func NewSettleService(questionRepo *repository.QuestionRepository, voteRepo *repository.VoteRepository,
+	optionRepo *repository.OptionRepository) *SettleService {
 	return &SettleService{
 		questionRepo: questionRepo,
 		voteRepo:     voteRepo,
+		optionRepo:   optionRepo,
 	}
 }
 
@@ -63,34 +67,10 @@ func (s *SettleService) SettleQuestion(ctx context.Context, questionID int64) (*
 		return nil, err
 	}
 
-	//一次遍历同时求出总票数、第一名和第二名。
-	var total, top, second int64
-	for _, n := range counts {
-		total += n
-		switch {
-		case n > top:
-			second = top
-			top = n
-		case n > second:
-			second = n
-		}
-	}
-
-	//第一名唯一才定得出来；平票或者根本没人投，就留空给提问者
-	var finalOptionID *int64
-	if total > 0 && top > second {
-		//找出最终选项ID
-		for id, n := range counts {
-			if n == top {
-				v := id
-				finalOptionID = &v
-				break
-			}
-		}
-	}
-
-	//判断是否进入争议
-	contested := total > contestedMinVotes && gapScore(top, second, total) <= contestedMaxGapScore
+	//一次遍历求出票数分布。自动结算和提问者公布用的是同一个函数，两套判定不可能分叉
+	t := tallyVotes(counts)
+	finalOptionID := t.topID //第一名唯一时才有值；平票或者根本没人投就留空给提问者
+	contested := t.contested()
 
 	//写入结算结果
 	won, err := s.questionRepo.MarkSettled(ctx, questionID, finalOptionID, contested)
@@ -164,6 +144,124 @@ func (s *SettleService) round(ctx context.Context, why string) {
 	if won > 0 {
 		log.Printf("结算任务：%s一轮结算 %d 题", why, won)
 	}
+}
+
+// tally 一道题的票数分布结论
+type tally struct {
+	total  int64
+	top    int64
+	second int64
+	topID  *int64 //第一名票数唯一时对应的选项；平票或没人投票时为 nil
+}
+
+// tallyVotes 一次求出总量、第一名和第二名
+func tallyVotes(counts map[int64]int64) tally {
+	var t tally
+	for _, n := range counts {
+		t.total += n
+		switch {
+		case n > t.top:
+			t.second = t.top
+			t.top = n
+		case n > t.second:
+			t.second = n
+		}
+	}
+	//第一名唯一才定得出来
+	if t.total > 0 && t.top > t.second {
+		for id, n := range counts {
+			if n == t.top {
+				v := id
+				t.topID = &v
+				break
+			}
+		}
+	}
+	return t
+}
+
+// contested 是否进争议海螺
+func (t tally) contested() bool {
+	return t.total > contestedMinVotes && gapScore(t.top, t.second, t.total) <= contestedMaxGapScore
+}
+
+// FinalResult 公布最终选择的响应体
+type FinalResult struct {
+	QuestionID    int64 `json:"question_id"`
+	FinalOptionID int64 `json:"final_option_id"`
+}
+
+// PublishFinal 提问者公布最终选择
+func (s *SettleService) PublishFinal(ctx context.Context, questionID, userID, optionID int64) (*FinalResult, error) {
+	//查询问题
+	q, err := s.questionRepo.GetByID(ctx, questionID) 
+	if err != nil {
+		return nil, err
+	}
+
+	//确认当前用户为提问者
+	if q.AskerID != userID { 
+		return nil, model.ErrNotAsker
+	}
+
+	//确认选项属于当前问题
+	opts, err := s.optionRepo.ListByQuestion(ctx, questionID) 
+	if err != nil {
+		return nil, err
+	}
+	matched := false
+	for _, o := range opts {
+		if o.ID == optionID {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return nil, model.ErrOptionNotInQuestion
+	}
+
+	//确认当前问题还没结算
+	if q.FinalOptionID != nil {
+		return nil, model.ErrFinalAlreadySet
+	}
+
+	//只补充最终选项
+	published := optionID
+	if q.IsSettled() {
+		won, err := s.questionRepo.MarkFinalOnly(ctx, questionID, optionID)
+		if err != nil {
+			return nil, err
+		}
+		if !won {
+			return nil, s.recheckFinal(ctx, questionID)
+		}
+	} else { //未结算的问题，同时完成公布和结算
+		counts, err := s.voteRepo.CountByOption(ctx, questionID)
+		if err != nil {
+			return nil, err
+		}
+		won, err := s.questionRepo.MarkSettled(ctx, questionID, &published, tallyVotes(counts).contested())
+		if err != nil {
+			return nil, err
+		}
+		if !won {
+			return nil, s.recheckFinal(ctx, questionID)
+		}
+	}
+
+	return &FinalResult{QuestionID: questionID, FinalOptionID: optionID}, nil
+}
+
+// recheckFinal 用于处理并发更新失败（这一块是AI加进去的没太搞懂原因）
+func (s *SettleService) recheckFinal(ctx context.Context, questionID int64) error {
+	q, err := s.questionRepo.GetByID(ctx, questionID)
+	if err != nil {
+		return err
+	}
+	if q.FinalOptionID != nil {
+		return model.ErrFinalAlreadySet
+	}
+	return fmt.Errorf("公布最终选择未生效 questionID=%d", questionID)
 }
 
 // gapScore 第一名和第二名差多少个百分点

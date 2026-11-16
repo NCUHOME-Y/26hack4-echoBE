@@ -71,7 +71,7 @@ func main() {
 	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler, Reply: replyHandler}
 
 	//到期结算：后台每 30 秒扫一轮
-	settleSvc := service.NewSettleService(questionRepo, voteRepo)
+	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM) //监听系统信号，收到退出信号就取消ctx
 	defer stop()
 	go settleSvc.Run(ctx)
