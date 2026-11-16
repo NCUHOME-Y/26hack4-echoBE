@@ -45,3 +45,8 @@ type CreateQuestionReq struct {
 type OptionLabel struct {
 	Label string `json:"label"`
 }
+
+//SetFinalReq公布最终选择的请求体，问题ID在URL路径里
+type SetFinalReq struct {
+	OptionID int64 `json:"option_id" binding:"required"`
+}

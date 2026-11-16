@@ -118,3 +118,14 @@ func (r *QuestionRepository) MarkSettled(ctx context.Context, questionID int64, 
 	} //是否抢到结算权
 	return res.RowsAffected > 0, nil //影响 0 行说明被别人抢先结算过了
 }
+
+// MarkFinalOnly 补写最终选择（遇到平票或者没有人投票的时候）
+func (r *QuestionRepository) MarkFinalOnly(ctx context.Context, questionID, optionID int64) (bool, error) {
+	res := r.db.WithContext(ctx).Model(&model.Question{}).
+		Where("id = ? AND final_option_id IS NULL", questionID). //防止重复公布把选择改掉
+		Updates(map[string]interface{}{"final_option_id": optionID}) //只修改最终选项
+	if res.Error != nil {
+		return false, fmt.Errorf("写入最终选择失败: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil //影响 0 行说明这题已经定过一次了
+}
