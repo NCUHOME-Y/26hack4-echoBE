@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
+	"echo/middleware"
 	"echo/model"
 	"echo/repository"
+
+	"go.uber.org/zap"
 )
 
 // 争议判定的两个门槛
@@ -99,18 +101,18 @@ func (s *SettleService) SettleDue(ctx context.Context, limit int) (int, error) {
 	for i := range list {
 		outcome, err := s.SettleQuestion(ctx, list[i].ID)
 		if err != nil {
-			log.Printf("结算任务：单题结算失败 questionID=%d err=%v", list[i].ID, err)
+			middleware.L().Error("结算任务：单题结算失败", zap.Int64("question_id", list[i].ID), zap.Error(err))
 			continue
 		} //单题数据异常不会阻塞后面的题目
 		if !outcome.Won {
 			continue //被别人抢先结算过了，不算本轮的产出
 		}
 		won++
-		final := "NULL"
-		if outcome.FinalOptionID != nil {
-			final = fmt.Sprint(*outcome.FinalOptionID)
-		}
-		log.Printf("结算任务：已结算 questionID=%d final=%s contested=%v", list[i].ID, final, outcome.Contested)
+		middleware.L().Info("结算任务：已结算",
+			zap.Int64("question_id", list[i].ID),
+			zap.Int64p("final_option_id", outcome.FinalOptionID), //指针字段：没定成就是 null，不用手工拼 "NULL"
+			zap.Bool("contested", outcome.Contested),
+		)
 	}
 	return won, nil
 }
@@ -126,7 +128,7 @@ func (s *SettleService) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("结算任务：收到退出信号，停止扫描")
+			middleware.L().Info("结算任务：收到退出信号，停止扫描")
 			return
 		case <-ticker.C:
 			s.round(ctx, "定时")
@@ -138,11 +140,11 @@ func (s *SettleService) Run(ctx context.Context) {
 func (s *SettleService) round(ctx context.Context, why string) {
 	won, err := s.SettleDue(ctx, settleBatch)
 	if err != nil { //查询失败只打日志，不终止循环
-		log.Printf("结算任务：%s一轮扫描失败 err=%v", why, err)
+		middleware.L().Error("结算任务：一轮扫描失败", zap.String("trigger", why), zap.Error(err))
 		return
 	}
 	if won > 0 {
-		log.Printf("结算任务：%s一轮结算 %d 题", why, won)
+		middleware.L().Info("结算任务：完成一轮结算", zap.String("trigger", why), zap.Int("settled", won))
 	}
 }
 

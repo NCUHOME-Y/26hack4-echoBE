@@ -33,7 +33,7 @@ func main() {
 
 	middleware.InitLogger(zapLogger)
 
-	db, err := repository.NewDB() //建立数据库连接
+	db, err := repository.NewDB(zapLogger) //建立数据库连接，SQL 日志并入同一个 zap
 	if err != nil {
 		middleware.L().Fatal("数据库初始化失败", zap.Error(err))
 	}
