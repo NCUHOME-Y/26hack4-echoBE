@@ -2,13 +2,14 @@
 TRUNCATE TABLE questions, options, votes, question_skips, replies, exp_entries
     RESTART IDENTITY CASCADE;
 
-/*1) 测试用户：占位 hash 不能登录，只用于外键和聚合*/
+/*1) 测试用户：hash 是真实 bcrypt 值，统一密码 Echo12345678（符合 min=8,max=64,alphanum）
+   这四个账号可以直接登录，演示和自测不用先注册一次性账号*/
 INSERT INTO users (id, account, nickname, password_hash, exp) OVERRIDING SYSTEM VALUE VALUES
-  (9001, 'alice01', 'Alice', 'x', 0),
-  (9002, 'bob01',   'Bob',   'x', 0),
-  (9003, 'carol01', 'Carol', 'x', 0),
-  (9004, 'dave01',  'Dave',  'x', 0)
-ON CONFLICT (id) DO NOTHING;
+  (9001, 'alice01', 'Alice', '$2a$10$8h5Yv933snTCl2gvWZwGXOCjQXOUIQuAHKnjBTdS78vl8.YkRijim', 0),
+  (9002, 'bob01',   'Bob',   '$2a$10$8h5Yv933snTCl2gvWZwGXOCjQXOUIQuAHKnjBTdS78vl8.YkRijim', 0),
+  (9003, 'carol01', 'Carol', '$2a$10$8h5Yv933snTCl2gvWZwGXOCjQXOUIQuAHKnjBTdS78vl8.YkRijim', 0),
+  (9004, 'dave01',  'Dave',  '$2a$10$8h5Yv933snTCl2gvWZwGXOCjQXOUIQuAHKnjBTdS78vl8.YkRijim', 0)
+ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 /*2) 状态覆盖：未到期 / 即将到期 / 已过期未结算 / 已结算非争议 / 已结算且入争议库
    status 只有 open 和 closed 两种，争议一律看 contested_at，不再用历史遗留的 contested 值*/
@@ -28,7 +29,9 @@ INSERT INTO options (id, question_id, label, sort_no) OVERRIDING SYSTEM VALUE VA
   (9010, 9005, '食堂',   1), (9011, 9005, '外卖', 2);
 
 /*4) 已结算的两道题补上最终选择（必须是它自己的选项，否则复合外键会拦）
-   9004 和 9005 都是 1:1 平票，这里按"sort_no 小者优先"取第一个选项；平票的正式规则还没定*/
+   9004 和 9005 都是 1:1 平票。按已定规则（平票不猜，final_option_id 留空，由提问者用 #13 补公布），
+   自动结算出来的这两题 final_option_id 应该是 NULL——这里写成非空，代表的是"提问者事后已经公布过"的状态，
+   也就是 #13 走完之后的库。要演示"平票还没定"，把这两行注释掉即可*/
 UPDATE questions SET final_option_id = 9008 WHERE id = 9004;
 UPDATE questions SET final_option_id = 9010 WHERE id = 9005;
 
@@ -50,11 +53,23 @@ INSERT INTO replies (question_id, user_id, content) VALUES
   (9001, 9002, '在家效率其实更高，前提是手机放远点'),
   (9002, 9003, '两个都不能推，看看能不能错峰');
 
-/*8) 经验流水：reason 是幂等键的一部分，占位先统一用 settle*/
+/*8) 经验流水：代表"第 9 段那两条题结算完成之后"的库状态，reason 和 delta 全部取 model/exp.go 的常量
+   ask=10 每题一次 / settle_ask=40 给提问者 / settle_match=25 与最终选择一致 / settle_miss=5 不一致
+   改常量要同步改这里，否则余额和流水对不上，第 9 段重算出来的 exp 就露馅了
+   唯一约束是 (user_id, source_type, source_id, reason)，同一题同一理由不能出现两次
+   9001 9002 9003 三道题还没结算，所以只有 ask，没有 settle 系列*/
 INSERT INTO exp_entries (user_id, delta, reason, source_type, source_id) VALUES
-  (9002, 20, 'settle', 'question', 9004),
-  (9003, 20, 'settle', 'question', 9004),
-  (9002, 35, 'settle', 'question', 9001);
+  (9001, 10, 'ask', 'question', 9001), (9001, 10, 'ask', 'question', 9004),
+  (9002, 10, 'ask', 'question', 9002), (9002, 10, 'ask', 'question', 9005),
+  (9003, 10, 'ask', 'question', 9003),
+  /*9004 final=9008：提问者 9001 +40，投 9008 的 9002 匹配 +25，投 9009 的 9003 不匹配 +5*/
+  (9001, 40, 'settle_ask',   'question', 9004),
+  (9002, 25, 'settle_match', 'question', 9004),
+  (9003,  5, 'settle_miss',  'question', 9004),
+  /*9005 final=9010：提问者 9002 +40，投 9010 的 9001 匹配 +25，投 9011 的 9003 不匹配 +5*/
+  (9002, 40, 'settle_ask',   'question', 9005),
+  (9001, 25, 'settle_match', 'question', 9005),
+  (9003,  5, 'settle_miss',  'question', 9005);
 
 /*9) 余额必须等于流水之和*/
 UPDATE users u SET exp = COALESCE((SELECT SUM(e.delta) FROM exp_entries e WHERE e.user_id = u.id), 0)
