@@ -58,7 +58,8 @@ func main() {
 	skipHandler := handler.NewSkipHandler(skipSvc)
 
 	//创建发布问题的服务与handler
-	questionSvc := service.NewQuestionService(questionRepo, optionRepo, voteRepo, skipRepo, userRepo)
+	expRepo := repository.NewExpRepository(db)
+	questionSvc := service.NewQuestionService(questionRepo, optionRepo, voteRepo, skipRepo, userRepo, expRepo)
 	questionHandler := handler.NewQuestionHandler(questionSvc)
 
 	//创建评论区的服务与handler
