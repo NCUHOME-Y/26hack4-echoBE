@@ -2,14 +2,15 @@ package handler
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 
+	"echo/middleware"
 	"echo/model"
 	"echo/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type VoteHandler struct {
@@ -32,7 +33,7 @@ func (h *VoteHandler) Create(c *gin.Context) {
 	//解析请求体
 	var req model.CastVoteReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("投票：请求体解析失败 questionID=%d err=%v", questionID, err)
+		middleware.L().Warn("投票：请求体解析失败", zap.Int64("question_id", questionID), zap.Error(err))
 		Error(c, http.StatusBadRequest, "参数不合法：option_id 必填")
 		return
 	}
@@ -51,7 +52,7 @@ func (h *VoteHandler) Create(c *gin.Context) {
 			errors.Is(err, model.ErrAlreadyVoted), errors.Is(err, model.ErrQuestionSkipped):
 			Error(c, http.StatusConflict, err.Error())
 		default: //剩下的都是查库失败之类的真故障，不能当成校验不通过
-			log.Printf("投票校验失败 questionID=%d userID=%d err=%v", questionID, userID, err)
+			middleware.L().Error("投票校验失败", zap.Int64("question_id", questionID), zap.Int64("user_id", userID), zap.Error(err))
 			Error(c, http.StatusInternalServerError, "投票失败，请稍后重试")
 		}
 		return
