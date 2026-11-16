@@ -45,21 +45,12 @@ func (s *MeService) UpdateAvatar(ctx context.Context, userID int64, avatar strin
 	return s.userRepo.UpdateAvatarReq(ctx, userID, map[string]interface{}{"avatar": avatar})
 }
 
-// ListMyQuestions 查询我发布的问题，统一处理分页边界
+// ListMyQuestions 查询我发布的问题，page/pageSize 已由 handler 层的 parsePage 统一校验
 func (s *MeService) ListMyQuestions(
 	ctx context.Context,
 	userID int64,
 	page, pageSize int,
 ) (*model.MyQuestionsData, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
 
 	offset := (page - 1) * pageSize
 	list, total, err := s.meRepo.ListMyQuestions(
@@ -80,22 +71,13 @@ func (s *MeService) ListMyQuestions(
 	}, nil
 }
 
-// ListMyAnswers 查询我投过票的问题 统一处理分页边界
+// ListMyAnswers 查询我投过票的问题 page/pageSize 已由 handler 层的 parsePage 统一校验
 func (s *MeService) ListMyAnswers(
 	ctx context.Context,
 	userID int64,
 	page, pageSize int,
 	keyword string,
 ) (*model.MyAnswersData, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
 
 	offset := (page - 1) * pageSize
 	list, total, err := s.meRepo.ListMyAnswers(
