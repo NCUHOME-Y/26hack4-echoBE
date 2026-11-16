@@ -18,5 +18,6 @@ type Handlers struct {
 	Skip     *SkipHandler
 	Reply    *ReplyHandler
 	Final    *FinalHandler
+	Stats    *StatsHandler
 	Question *QuestionHandler
 }

@@ -71,8 +71,12 @@ func main() {
 	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo)
 	finalHandler := handler.NewFinalHandler(settleSvc)
 
+	//今日统计
+	statsSvc := service.NewStatsService(questionRepo, voteRepo)
+	statsHandler := handler.NewStatsHandler(statsSvc)
+
 	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处
-	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler, Reply: replyHandler, Final: finalHandler}
+	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler, Reply: replyHandler, Final: finalHandler, Stats: statsHandler}
 
 	//到期结算：后台每 30 秒扫一轮
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM) //监听系统信号，收到退出信号就取消ctx
