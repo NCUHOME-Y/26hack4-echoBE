@@ -6,6 +6,8 @@ import (
 
 	"echo/model"
 	"echo/repository"
+
+	"gorm.io/gorm"
 )
 
 // VoteService 投票与实时占比的业务规则层
@@ -14,15 +16,17 @@ type VoteService struct {
 	optionRepo   *repository.OptionRepository   //判选项归属 + 组装占比
 	voteRepo     *repository.VoteRepository     //查我的票、插票、聚合票数
 	skipRepo     *repository.SkipRepository     //查是否已放弃作答权
+	expRepo      *repository.ExpRepository      //投票成功那一刻发作答积分
 }
 
 func NewVoteService(questionRepo *repository.QuestionRepository, optionRepo *repository.OptionRepository,
-	voteRepo *repository.VoteRepository, skipRepo *repository.SkipRepository) *VoteService {
+	voteRepo *repository.VoteRepository, skipRepo *repository.SkipRepository, expRepo *repository.ExpRepository) *VoteService {
 	return &VoteService{
 		questionRepo: questionRepo,
 		optionRepo:   optionRepo,
 		voteRepo:     voteRepo,
 		skipRepo:     skipRepo,
+		expRepo:      expRepo,
 	}
 }
 
@@ -96,8 +100,17 @@ func (s *VoteService) CastVote(ctx context.Context, questionID, userID, optionID
 		return nil, model.ErrQuestionSkipped
 	}
 
-	//真正的投票操作
-	if err := s.voteRepo.Cast(ctx, questionID, userID, optionID, s.skipRepo); err != nil {
+	//真正的投票操作，答一题 +5 分在同一个事务里发出去
+	grant := func(tx *gorm.DB) error {
+		return s.expRepo.GrantTx(tx, &model.ExpEntry{
+			UserID:     userID,
+			Delta:      model.ExpAnswer,
+			Reason:     model.ExpReasonAnswer,
+			SourceType: model.ExpSourceVote,
+			SourceID:   questionID, //一人一题一票，这个键天然不会重复发
+		})
+	}
+	if err := s.voteRepo.Cast(ctx, questionID, userID, optionID, s.skipRepo, grant); err != nil {
 		return nil, err
 	}
 
