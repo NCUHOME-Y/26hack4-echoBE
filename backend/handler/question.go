@@ -2,14 +2,15 @@ package handler
 
 import (
 	"errors"
-	"log"
 	"net/http"
 
+	"echo/middleware"
 	"echo/model"
 	"echo/service"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type QuestionHandler struct {
@@ -24,7 +25,7 @@ func NewQuestionHandler(questionSvc *service.QuestionService) *QuestionHandler {
 func (h *QuestionHandler) Create(c *gin.Context) {
 	var req model.CreateQuestionReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("发布问题：请求体解析失败 err=%v", err)
+		middleware.L().Warn("发布问题：请求体解析失败", zap.Error(err))
 		Error(c, http.StatusBadRequest, "请求参数格式错误")
 		return
 	}
@@ -44,7 +45,7 @@ func (h *QuestionHandler) Create(c *gin.Context) {
 		case errors.Is(err, model.ErrUserNotFound):
 			Error(c, http.StatusUnauthorized, "账号不存在或已注销，请重新登录")
 		default:
-			log.Printf("发布问题失败 userID=%d err=%v", userID, err)
+			middleware.L().Error("发布问题失败", zap.Int64("user_id", userID), zap.Error(err))
 			Error(c, http.StatusInternalServerError, "发布失败，请稍后重试")
 		}
 		return
@@ -69,7 +70,7 @@ func (h *QuestionHandler) Detail(c *gin.Context) {
 		case errors.Is(err, model.ErrQuestionNotFound):
 			Error(c, http.StatusNotFound, "问题不存在")
 		default:
-			log.Printf("获取问题详情失败 questionID=%d err=%v", id, err)
+			middleware.L().Error("获取问题详情失败", zap.Int64("question_id", id), zap.Error(err))
 			Error(c, http.StatusInternalServerError, "获取问题详情失败")
 		}
 		return
@@ -83,7 +84,7 @@ func (h *QuestionHandler) Random(c *gin.Context) {
 	userID := c.GetInt64("userID") //从JWT中间件中解析出用户ID
 	detail, err := h.questionSvc.Random(c.Request.Context(), userID) //调用service层完成抽题业务
 	if err != nil {
-		log.Printf("抽题失败 userID=%d err=%v", userID, err)
+		middleware.L().Error("抽题失败", zap.Int64("user_id", userID), zap.Error(err))
 		Error(c, http.StatusInternalServerError, "抽题失败，请稍后重试")
 		return
 	} //处理数据库错误
@@ -98,7 +99,7 @@ func (h *QuestionHandler) Random(c *gin.Context) {
 func (h *QuestionHandler) Contested(c *gin.Context) {
 	result, err := h.questionSvc.Contested(c.Request.Context()) //调用service层完成争议题列表业务
 	if err != nil {
-		log.Printf("争议列表失败 err=%v", err)
+		middleware.L().Error("争议列表失败", zap.Error(err))
 		Error(c, http.StatusInternalServerError, "服务异常，请稍后重试")
 		return
 	}

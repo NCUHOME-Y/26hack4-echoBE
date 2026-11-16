@@ -2,14 +2,15 @@ package handler
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 
+	"echo/middleware"
 	"echo/model"
 	"echo/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type ReplyHandler struct {
@@ -37,7 +38,7 @@ func (h *ReplyHandler) List(c *gin.Context) {
 		case errors.Is(err, model.ErrQuestionNotFound):
 			Error(c, http.StatusNotFound, err.Error())
 		default: //剩下的都是查库失败之类的真故障，不能当成题不存在
-			log.Printf("评论列表失败 questionID=%d userID=%d err=%v", questionID, userID, err)
+			middleware.L().Error("评论列表失败", zap.Int64("question_id", questionID), zap.Int64("user_id", userID), zap.Error(err))
 			Error(c, http.StatusInternalServerError, "服务异常，请稍后重试")
 		}
 		return
@@ -57,7 +58,7 @@ func (h *ReplyHandler) Create(c *gin.Context) {
 	//解析请求体，获取评论内容
 	var req model.CreateReplyReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("发表评论：请求体解析失败 questionID=%d err=%v", questionID, err)
+		middleware.L().Warn("发表评论：请求体解析失败", zap.Int64("question_id", questionID), zap.Error(err))
 		Error(c, http.StatusBadRequest, "参数不合法：评论内容 1-32 字符")
 		return
 	}
@@ -75,7 +76,7 @@ func (h *ReplyHandler) Create(c *gin.Context) {
 		case errors.Is(err, model.ErrUserNotFound):
 			Error(c, http.StatusUnauthorized, "账号不存在或已注销，请重新登录") //token有效但账号被删，与发布问题同一口径
 		default:
-			log.Printf("发表评论失败 questionID=%d userID=%d err=%v", questionID, userID, err)
+			middleware.L().Error("发表评论失败", zap.Int64("question_id", questionID), zap.Int64("user_id", userID), zap.Error(err))
 			Error(c, http.StatusInternalServerError, "发送失败，请稍后重试")
 		}
 		return
@@ -102,7 +103,7 @@ func (h *ReplyHandler) Delete(c *gin.Context) {
 		case errors.Is(err, model.ErrNotReplyOwner):
 			Error(c, http.StatusForbidden, err.Error())
 		default: //剩下的才是真故障，比如评论在但所属的题取不到
-			log.Printf("删除评论失败 replyID=%d userID=%d err=%v", replyID, userID, err)
+			middleware.L().Error("删除评论失败", zap.Int64("reply_id", replyID), zap.Int64("user_id", userID), zap.Error(err))
 			Error(c, http.StatusInternalServerError, "服务异常，请稍后重试")
 		}
 		return

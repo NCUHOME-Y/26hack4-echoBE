@@ -2,14 +2,15 @@ package handler
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 
+	"echo/middleware"
 	"echo/model"
 	"echo/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type SkipHandler struct {
@@ -39,7 +40,7 @@ func (h *SkipHandler) Create(c *gin.Context) {
 		case errors.Is(err, model.ErrOwnQuestionSkip), errors.Is(err, model.ErrAlreadyVotedSkip):
 			Error(c, http.StatusConflict, err.Error())
 		default: //剩下的都是查库写库失败之类的真故障
-			log.Printf("跳过失败 questionID=%d userID=%d err=%v", questionID, userID, err)
+			middleware.L().Error("跳过失败", zap.Int64("question_id", questionID), zap.Int64("user_id", userID), zap.Error(err))
 			Error(c, http.StatusInternalServerError, "操作失败，请稍后重试")
 		}
 		return

@@ -2,18 +2,18 @@ package repository
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"github.com/joho/godotenv"
+	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-// NewDB 创建数据库连接与配置连接池
-func NewDB() (*gorm.DB, error) {
+// NewDB 创建数据库连接与配置连接池。SQL 日志走传进来的 zap，服务里只保留一种日志格式
+func NewDB(l *zap.Logger) (*gorm.DB, error) {
 	_ = godotenv.Load()
 
 	// 检查环境变量是否存在
@@ -26,19 +26,8 @@ func NewDB() (*gorm.DB, error) {
 		os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_SSLMODE"))
 
-	// GORM 自己的 SQL 日志。级别还是默认的 Warn，只多做一件事：把"记录不存在"排除掉。
-	// "我这题投过没""这个账号在不在"这类查询，查不到是正常状态，不该在日志里刷一行 record not found，
-	// 否则它会污染"日志里 500 计数必须为 0"这种自测口径。
-	// 真正的 SQL 错误（唯一约束、CHECK、语法错、连不上）和慢查询仍然照常打出来。
-	gormLogger := logger.New(
-		log.New(os.Stdout, "", log.LstdFlags),
-		logger.Config{
-			SlowThreshold:             200 * time.Millisecond, //超过 200 毫秒的查询按 Warn 打出来
-			LogLevel:                  logger.Warn,
-			Colorful:                  false, //Windows 终端会显示 ANSI 转义码，关掉更干净
-			IgnoreRecordNotFoundError: true,
-		},
-	)
+	// GORM 的 SQL 日志接到 zap 上，级别 Warn：只出真错误和慢查询
+	gormLogger := newGormZap(l, 200*time.Millisecond, logger.Warn)
 
 	// 连接数据库
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{TranslateError: true, Logger: gormLogger}) // 开启错误翻译，翻译成gorm自己的错误，方便后面进行错误断言
