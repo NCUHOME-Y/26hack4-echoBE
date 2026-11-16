@@ -54,17 +54,18 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				usersMe.GET("/answers", h.Me.ListMyAnswers)     //我投过票的问题历史
 			}
 
-			// /api/questions 资源组：发布、抽题、详情、投票、跳过、评论列表与发表、公布最终选择（争议列表、删除评论后续挂这里）
+			// /api/questions 资源组：发布、抽题、详情、投票、跳过、评论列表与发表、公布最终选择、争议列表（删除评论后续挂这里）
 			questions := authed.Group("/questions")
 			{
-				questions.POST("", h.Question.Create)          //发布问题与选项
-				questions.GET("/random", h.Question.Random)    //随机抽一题，静态路径优先于下面的 :id
-				questions.GET("/:id", h.Question.Detail)       //问题详情与实时占比
-				questions.POST("/:id/votes", h.Vote.Create)    //提交投票
-				questions.POST("/:id/skips", h.Skip.Create)    //跳过这题，永久放弃作答权
-				questions.GET("/:id/replies", h.Reply.List)    //评论列表，最多返回最新 50 条
-				questions.POST("/:id/replies", h.Reply.Create) //发表回复
-				questions.PUT("/:id/final", h.Final.Publish)   //公布最终选择，公布即结束
+				questions.POST("", h.Question.Create)             //发布问题与选项
+				questions.GET("/random", h.Question.Random)       //随机抽一题，静态路径优先于下面的 :id
+				questions.GET("/contested", h.Question.Contested) //争议海螺列表，最新 100 条
+				questions.GET("/:id", h.Question.Detail)          //问题详情与实时占比
+				questions.POST("/:id/votes", h.Vote.Create)       //提交投票
+				questions.POST("/:id/skips", h.Skip.Create)       //跳过这题，永久放弃作答权
+				questions.GET("/:id/replies", h.Reply.List)       //评论列表，最多返回最新 50 条
+				questions.POST("/:id/replies", h.Reply.Create)    //发表回复
+				questions.PUT("/:id/final", h.Final.Publish)      //公布最终选择，公布即结束
 
 			}
 		}
