@@ -17,5 +17,6 @@ type Handlers struct {
 	Vote     *VoteHandler
 	Skip     *SkipHandler
 	Reply    *ReplyHandler
+	Final    *FinalHandler
 	Question *QuestionHandler
 }

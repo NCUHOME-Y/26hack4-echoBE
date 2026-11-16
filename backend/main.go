@@ -67,11 +67,14 @@ func main() {
 	replySvc := service.NewReplyService(questionRepo, replyRepo, userRepo)
 	replyHandler := handler.NewReplyHandler(replySvc)
 
+	//到期结算与提问者公布共用同一个服务，所以要先建好再交给 handler 结构体
+	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo)
+	finalHandler := handler.NewFinalHandler(settleSvc)
+
 	//handler 全部收进一个结构体交给路由，以后每加一个模块只改这一处
-	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler, Reply: replyHandler}
+	handlers := &handler.Handlers{User: userHandler, Me: meHandler, Vote: voteHandler, Skip: skipHandler, Question: questionHandler, Reply: replyHandler, Final: finalHandler}
 
 	//到期结算：后台每 30 秒扫一轮
-	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM) //监听系统信号，收到退出信号就取消ctx
 	defer stop()
 	go settleSvc.Run(ctx)
