@@ -75,6 +75,12 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				replies.DELETE("/:id", h.Reply.Delete) //软删除一条回复，作者或本题提问者可删
 
 			}
+
+			// /api/stats 资源组：首页看板的今日统计
+			stats := authed.Group("/stats")
+			{
+				stats.GET("/daily", h.Stats.Daily) //今日发布量、投票量、结算量
+			}
 		}
 	}
 

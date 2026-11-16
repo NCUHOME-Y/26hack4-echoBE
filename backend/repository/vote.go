@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"echo/model"
 
@@ -127,4 +128,16 @@ func (r *VoteRepository) Cast(ctx context.Context, questionID, userID, optionID 
 			OptionID:   optionID,
 		})
 	})
+}
+
+// CountBetween 统计落在一个区间内的产生的投票数量
+func (r *VoteRepository) CountBetween(ctx context.Context, start, end time.Time) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.Vote{}).
+		Where("created_at >= ? AND created_at < ?", start, end).
+		Count(&n).Error
+	if err != nil {
+		return 0, fmt.Errorf("统计今日投票量失败: %w", err)
+	}
+	return n, nil
 }
