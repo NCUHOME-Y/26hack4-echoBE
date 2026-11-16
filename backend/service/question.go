@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"gorm.io/gorm"
+
 	"echo/model"
 	"echo/repository"
 )
@@ -16,6 +18,7 @@ type QuestionService struct {
 	voteRepo     *repository.VoteRepository
 	skipRepo     *repository.SkipRepository
 	userRepo     *repository.UserRepository
+	expRepo      *repository.ExpRepository
 }
 
 func NewQuestionService(
@@ -24,6 +27,7 @@ func NewQuestionService(
 	voteRepo *repository.VoteRepository,
 	skipRepo *repository.SkipRepository,
 	userRepo *repository.UserRepository,
+	expRepo *repository.ExpRepository,
 ) *QuestionService {
 	return &QuestionService{
 		questionRepo: questionRepo,
@@ -31,6 +35,7 @@ func NewQuestionService(
 		voteRepo:     voteRepo,
 		skipRepo:     skipRepo,
 		userRepo:     userRepo,
+		expRepo:      expRepo,
 	}
 }
 
@@ -99,10 +104,20 @@ func (s *QuestionService) Create(ctx context.Context, userID int64, req model.Cr
 		OptionCount: int16(len(labels)),
 	}
 
-	opts, err := s.questionRepo.CreateWithOptions(ctx, q, labels)
+	opts, err := s.questionRepo.CreateWithOptions(ctx, q, labels, func(tx *gorm.DB, q *model.Question) error {
+		return s.expRepo.GrantTx(tx, &model.ExpEntry{
+			UserID:     userID,
+			Delta:      model.ExpAsk,
+			Reason:     model.ExpReasonAsk,
+			SourceType: model.ExpSourceQuestion,
+			SourceID:   q.ID, //每题只发一次，重复调用会被唯一约束拦下
+		})
+	})
 	if err != nil {
 		return nil, err
 	}
+
+	asker.Exp += model.ExpAsk //响应里的等级要反映加分后的结果
 
 	detail := &QuestionDetail{
 		ID:            q.ID,
