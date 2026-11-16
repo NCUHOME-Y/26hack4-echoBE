@@ -45,6 +45,16 @@ func (r *VoteRepository) GetByQuestionAndUser(ctx context.Context, questionID, u
 	return &v, nil
 }
 
+// ListByQuestion 取出这道题的全部投票明细，结算发分要用：谁投了哪个选项
+func (r *VoteRepository) ListByQuestion(ctx context.Context, questionID int64) ([]model.Vote, error) {
+	var list []model.Vote
+	err := r.db.WithContext(ctx).Where("question_id = ?", questionID).Order("id").Find(&list).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询投票明细失败: %w", err)
+	}
+	return list, nil
+}
+
 // CountByOption 统计某题每个选项的票数
 func (r *VoteRepository) CountByOption(ctx context.Context, questionID int64) (map[int64]int64, error) {
 	type row struct {
@@ -105,11 +115,17 @@ func (r *VoteRepository) WithTx(tx *gorm.DB) *VoteRepository {
 func (r *VoteRepository) Cast(ctx context.Context, questionID, userID, optionID int64, skips *SkipRepository) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		//锁住这道题，让同一题上的投票请求排队，而不是各查各的快照
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model.Question{}, questionID).Error; err != nil {
+		var locked model.Question
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, questionID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return model.ErrQuestionNotFound
 			}
 			return fmt.Errorf("锁定问题失败: %w", err)
+		}
+
+		//锁到手之后再看一眼还在不在作答窗口内
+		if !locked.IsLive() {
+			return model.ErrQuestionClosed
 		}
 
 		//再次检查跳过状态，多并发中容易出现错误

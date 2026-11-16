@@ -10,6 +10,7 @@ import (
 	"echo/repository"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // 争议判定的两个门槛
@@ -27,17 +28,19 @@ const (
 // SettleService 到期自动结算与提问者公布的业务规则层
 type SettleService struct {
 	questionRepo *repository.QuestionRepository //取题、落结算状态、补公布最终选择
-	voteRepo     *repository.VoteRepository     //数每个选项的票
+	voteRepo     *repository.VoteRepository     //数每个选项的票、取投票明细
 	optionRepo   *repository.OptionRepository   //判提交的选项属不属于这道题
+	expRepo      *repository.ExpRepository      //结算这一刻发积分
 }
 
 //注入这个业务所需要的repository
 func NewSettleService(questionRepo *repository.QuestionRepository, voteRepo *repository.VoteRepository,
-	optionRepo *repository.OptionRepository) *SettleService {
+	optionRepo *repository.OptionRepository, expRepo *repository.ExpRepository) *SettleService {
 	return &SettleService{
 		questionRepo: questionRepo,
 		voteRepo:     voteRepo,
 		optionRepo:   optionRepo,
+		expRepo:      expRepo,
 	}
 }
 
@@ -74,8 +77,10 @@ func (s *SettleService) SettleQuestion(ctx context.Context, questionID int64) (*
 	finalOptionID := t.topID //第一名唯一时才有值；平票或者根本没人投就留空给提问者
 	contested := t.contested()
 
-	//写入结算结果
-	won, err := s.questionRepo.MarkSettled(ctx, questionID, finalOptionID, contested)
+	//写入结算结果，并在同一个事务里发积分
+	won, err := s.questionRepo.SettleWith(ctx, questionID, finalOptionID, contested, func(tx *gorm.DB) error {
+		return s.grantSettleExp(tx, ctx, q.AskerID, questionID, finalOptionID)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +92,61 @@ func (s *SettleService) SettleQuestion(ctx context.Context, questionID int64) (*
 		Contested:     contested,
 		Won:           won,
 	}, nil
+}
+
+// settleReward 结算这一刻，某个投票者该拿哪一档：方案里的 25 / 5 / 15
+func settleReward(votedOptionID int64, finalOptionID *int64) (reason string, delta int) {
+	//平票或没人投票，还没定下来
+	if finalOptionID == nil { 
+		return model.ExpReasonSettleFailed, model.ExpSettleFailed
+	}
+
+	//投中了最终答案
+	if votedOptionID == *finalOptionID {
+		return model.ExpReasonSettleMatch, model.ExpSettleMatch
+	}
+
+	//没有投中最终答案
+	return model.ExpReasonSettleMiss, model.ExpSettleMiss
+}
+
+// grantSettleExp 在结算事务内发积分：提问者一份 settle_ask，每个投票者按选项归属一份。
+// 投票明细要在事务里读，而不是进事务前读——UPDATE 已经拿到这道题的行锁，
+// 此时读到的名单和写进去的结算结果才是同一份事实。
+// 重复发放由 exp_entries 的唯一约束 (user_id, source_type, source_id, reason) 拦在库层，
+// 所以这里不需要先查后插。
+func (s *SettleService) grantSettleExp(tx *gorm.DB, ctx context.Context, askerID int64, questionID int64, finalOptionID *int64) error {
+	//先给提问者发经验
+	if err := s.expRepo.GrantTx(tx, &model.ExpEntry{
+		UserID:     askerID,
+		Delta:      model.ExpSettleAsk,
+		Reason:     model.ExpReasonSettleAsk,
+		SourceType: model.ExpSourceQuestion,
+		SourceID:   questionID,
+	}); err != nil {
+		return err
+	}
+
+	//查询所有的投票
+	votes, err := s.voteRepo.WithTx(tx).ListByQuestion(ctx, questionID)
+	if err != nil {
+		return err
+	}
+
+	//给所有投票者发经验
+	for _, v := range votes {
+		reason, delta := settleReward(v.OptionID, finalOptionID)
+		if err := s.expRepo.GrantTx(tx, &model.ExpEntry{
+			UserID:     v.UserID,
+			Delta:      delta,
+			Reason:     reason,
+			SourceType: model.ExpSourceQuestion,
+			SourceID:   questionID,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SettleDue 扫一轮：捞出到期未结算的题逐题结算，返回真正写入的题数
@@ -242,7 +302,9 @@ func (s *SettleService) PublishFinal(ctx context.Context, questionID, userID, op
 		if err != nil {
 			return nil, err
 		}
-		won, err := s.questionRepo.MarkSettled(ctx, questionID, &published, tallyVotes(counts).contested())
+		won, err := s.questionRepo.SettleWith(ctx, questionID, &published, tallyVotes(counts).contested(), func(tx *gorm.DB) error {
+			return s.grantSettleExp(tx, ctx, q.AskerID, questionID, &published)
+		})
 		if err != nil {
 			return nil, err
 		}

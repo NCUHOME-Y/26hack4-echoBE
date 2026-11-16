@@ -75,7 +75,7 @@ func main() {
 	replyHandler := handler.NewReplyHandler(replySvc)
 
 	//到期结算与提问者公布共用同一个服务，所以要先建好再交给 handler 结构体
-	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo)
+	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo, expRepo)
 	finalHandler := handler.NewFinalHandler(settleSvc)
 
 	//今日统计

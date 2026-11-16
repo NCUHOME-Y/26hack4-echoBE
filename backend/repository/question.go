@@ -102,6 +102,31 @@ func (r *QuestionRepository) ListSettleable(ctx context.Context, limit int) ([]m
 
 // MarkSettled负责结算问题
 func (r *QuestionRepository) MarkSettled(ctx context.Context, questionID int64, finalOptionID *int64, contested bool) (bool, error) {
+	return r.SettleWith(ctx, questionID, finalOptionID, contested, nil)
+}
+
+// SettleWith 结算，并在同一个事务里执行 afterSettle（结算积分就从这里发）
+func (r *QuestionRepository) SettleWith(ctx context.Context, questionID int64, finalOptionID *int64, contested bool, afterSettle func(tx *gorm.DB) error) (bool, error) {
+	var won bool //是否抢到结算权
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updated, err := markSettledTx(tx, questionID, finalOptionID, contested)
+		if err != nil || !updated { //没抢到就不用往下走
+			return err
+		}
+		won = true
+		if afterSettle != nil {
+			return afterSettle(tx)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return won, nil
+}
+
+// markSettledTx 结算写入的实体，绑在调用方给的事务上
+func markSettledTx(tx *gorm.DB, questionID int64, finalOptionID *int64, contested bool) (bool, error) {
 	fields := map[string]interface{}{
 		"status":          model.StatusClosed,
 		"settled_at":      time.Now(),
@@ -110,7 +135,7 @@ func (r *QuestionRepository) MarkSettled(ctx context.Context, questionID int64, 
 	if contested {
 		fields["contested_at"] = time.Now()
 	} //不是争议就不写这个字段，让它保持空
-	res := r.db.WithContext(ctx).Model(&model.Question{}).
+	res := tx.Model(&model.Question{}).
 		Where("id = ? AND settled_at IS NULL", questionID). //防止被重复结算
 		Updates(fields)                                     //在数据库里面更新状态
 	if res.Error != nil {
