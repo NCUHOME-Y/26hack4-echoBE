@@ -26,6 +26,7 @@ func main() {
 
 	zapLogger, err := zap.NewProduction() //创建zap（生产格式：json
 	if err != nil {
+		//这一条只能留在标准库：zap 自己没起来，没有别的日志器可用
 		log.Fatalf("zap日志初始化失败: %v", err)
 	}
 	defer zapLogger.Sync() //程序退出前把缓冲区里的日志全部刷出去 防丢
@@ -34,12 +35,12 @@ func main() {
 
 	db, err := repository.NewDB() //建立数据库连接
 	if err != nil {
-		log.Fatalf("数据库初始化失败: %v", err)
+		middleware.L().Fatal("数据库初始化失败", zap.Error(err))
 	}
 
 	//godotenv 是在 NewDB 里加载的，所以这个检查必须放在它后面
 	if os.Getenv("JWT_SECRET") == "" {
-		log.Fatal("缺少 JWT_SECRET，请检查 .env")
+		middleware.L().Fatal("缺少 JWT_SECRET，请检查 .env")
 	}
 
 	userRepo := repository.NewUserRepository(db)   //创建用户仓库
@@ -115,21 +116,21 @@ func main() {
 		//端口被占、地址非法这类启动失败发生时还没收到任何信号，必须立刻退出，
 		//不能留下一个"进程还在但没在服务"的状态
 		if err != nil {
-			log.Fatalf("HTTP 服务启动失败: %v", err)
+			middleware.L().Fatal("HTTP 服务启动失败", zap.Error(err))
 		}
 	case <-ctx.Done(): //Ctrl+C 或 SIGTERM 到达，开始收尾
 	}
 
 	//ctx 已被信号取消，结算 ticker 同时也就停了，这里只负责把在途请求放干净
 	stop()
-	log.Printf("收到退出信号，停止接收新请求，最多等在途请求 %v", shutdownTimeout)
+	middleware.L().Info("收到退出信号，停止接收新请求", zap.Duration("grace", shutdownTimeout))
 
 	//优雅退出 HTTP 服务：给在途请求留点时间，超过这个时间还没结束的就直接退出
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("在途请求未在 %v 内结束，直接退出: %v", shutdownTimeout, err)
+		middleware.L().Error("在途请求未在期限内结束，直接退出", zap.Duration("grace", shutdownTimeout), zap.Error(err))
 		return
 	}
-	log.Printf("HTTP 服务已优雅退出")
+	middleware.L().Info("HTTP 服务已优雅退出")
 }
