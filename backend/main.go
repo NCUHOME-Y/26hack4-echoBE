@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"echo/handler"
 	"echo/middleware"
@@ -15,6 +18,9 @@ import (
 
 	"go.uber.org/zap"
 )
+
+//shutdownTimeout 关停时给在途请求留的时间，超出这个时间会直接关闭
+const shutdownTimeout = 10 * time.Second
 
 func main() {
 
@@ -88,7 +94,42 @@ func main() {
 	if port == "" {
 		port = "8080" //不设就保持原来的写死行为，避免改代码顺带改端口
 	}
-	if err := r.Run(":" + port); err != nil {
-		log.Fatalf("HTTP 服务启动失败: %v", err)
+
+	//创建 HTTP 服务启动
+	srv := &http.Server{Addr: ":" + port, Handler: r}
+
+	//容量为1的错误通道：ListenAndServe 退出时要发送结果，而此时主协程可能已经在收尾了，不带缓冲会让这个协程永久卡在发送上
+	serverErr := make(chan error, 1)
+
+	//用goroutine启动 HTTP 服务，主协程继续往下走，等待退出信号
+	go func() {
+		err := srv.ListenAndServe() //监听端口，接收请求，交给gin处理，一直运行到服务停止
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil //ErrServerClosed 是 Shutdown 的正常收尾，不是故障
+		}
+		serverErr <- err
+	}()
+
+	select {
+	case err := <-serverErr:
+		//端口被占、地址非法这类启动失败发生时还没收到任何信号，必须立刻退出，
+		//不能留下一个"进程还在但没在服务"的状态
+		if err != nil {
+			log.Fatalf("HTTP 服务启动失败: %v", err)
+		}
+	case <-ctx.Done(): //Ctrl+C 或 SIGTERM 到达，开始收尾
 	}
+
+	//ctx 已被信号取消，结算 ticker 同时也就停了，这里只负责把在途请求放干净
+	stop()
+	log.Printf("收到退出信号，停止接收新请求，最多等在途请求 %v", shutdownTimeout)
+
+	//优雅退出 HTTP 服务：给在途请求留点时间，超过这个时间还没结束的就直接退出
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("在途请求未在 %v 内结束，直接退出: %v", shutdownTimeout, err)
+		return
+	}
+	log.Printf("HTTP 服务已优雅退出")
 }
