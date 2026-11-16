@@ -55,8 +55,9 @@ func main() {
 	optionRepo := repository.NewOptionRepository(db)
 	voteRepo := repository.NewVoteRepository(db)
 	skipRepo := repository.NewSkipRepository(db)
+	expRepo := repository.NewExpRepository(db) //投票发分和发布发分共用同一个仓库，所以在这里建一次
 	//创建投票模块的服务
-	voteSvc := service.NewVoteService(questionRepo, optionRepo, voteRepo, skipRepo)
+	voteSvc := service.NewVoteService(questionRepo, optionRepo, voteRepo, skipRepo, expRepo)
 	//创建投票模块的handler
 	voteHandler := handler.NewVoteHandler(voteSvc)
 
@@ -65,7 +66,6 @@ func main() {
 	skipHandler := handler.NewSkipHandler(skipSvc)
 
 	//创建发布问题的服务与handler
-	expRepo := repository.NewExpRepository(db)
 	questionSvc := service.NewQuestionService(questionRepo, optionRepo, voteRepo, skipRepo, userRepo, expRepo)
 	questionHandler := handler.NewQuestionHandler(questionSvc)
 
@@ -75,7 +75,7 @@ func main() {
 	replyHandler := handler.NewReplyHandler(replySvc)
 
 	//到期结算与提问者公布共用同一个服务，所以要先建好再交给 handler 结构体
-	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo)
+	settleSvc := service.NewSettleService(questionRepo, voteRepo, optionRepo, expRepo)
 	finalHandler := handler.NewFinalHandler(settleSvc)
 
 	//今日统计

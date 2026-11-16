@@ -45,6 +45,16 @@ func (r *VoteRepository) GetByQuestionAndUser(ctx context.Context, questionID, u
 	return &v, nil
 }
 
+// ListByQuestion 取出这道题的全部投票明细，结算发分要用：谁投了哪个选项
+func (r *VoteRepository) ListByQuestion(ctx context.Context, questionID int64) ([]model.Vote, error) {
+	var list []model.Vote
+	err := r.db.WithContext(ctx).Where("question_id = ?", questionID).Order("id").Find(&list).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询投票明细失败: %w", err)
+	}
+	return list, nil
+}
+
 // CountByOption 统计某题每个选项的票数
 func (r *VoteRepository) CountByOption(ctx context.Context, questionID int64) (map[int64]int64, error) {
 	type row struct {
@@ -101,15 +111,22 @@ func (r *VoteRepository) WithTx(tx *gorm.DB) *VoteRepository {
 	return &VoteRepository{db: tx}
 }
 
-// Cast 在一个事务里完成"锁题 → 查跳过 → 插票"（下面这一块涉及到并发和锁，很大部分都依赖AI了）
-func (r *VoteRepository) Cast(ctx context.Context, questionID, userID, optionID int64, skips *SkipRepository) error {
+// Cast 在一个事务里完成"锁题 → 复查窗口 → 查跳过 → 插票 → 发积分"（下面这一块涉及到并发和锁，很大部分都依赖AI了）
+// afterVote 由 service 传入，用来在同一个事务里发积分，传 nil 表示不发
+func (r *VoteRepository) Cast(ctx context.Context, questionID, userID, optionID int64, skips *SkipRepository, afterVote func(tx *gorm.DB) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		//锁住这道题，让同一题上的投票请求排队，而不是各查各的快照
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model.Question{}, questionID).Error; err != nil {
+		var locked model.Question
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, questionID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return model.ErrQuestionNotFound
 			}
 			return fmt.Errorf("锁定问题失败: %w", err)
+		}
+
+		//锁到手之后再看一眼还在不在作答窗口内
+		if !locked.IsLive() {
+			return model.ErrQuestionClosed
 		}
 
 		//再次检查跳过状态，多并发中容易出现错误
@@ -122,11 +139,19 @@ func (r *VoteRepository) Cast(ctx context.Context, questionID, userID, optionID 
 		}
 
 		//插入投票
-		return r.WithTx(tx).Create(ctx, &model.Vote{
+		if err := r.WithTx(tx).Create(ctx, &model.Vote{
 			QuestionID: questionID,
 			UserID:     userID,
 			OptionID:   optionID,
-		})
+		}); err != nil {
+			return err
+		}
+
+		//事务最后发积分：发分失败整笔投票回滚，不留"票记上了、分没给"的状态
+		if afterVote != nil {
+			return afterVote(tx)
+		}
+		return nil
 	})
 }
 
