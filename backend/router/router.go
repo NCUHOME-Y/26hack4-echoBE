@@ -68,6 +68,13 @@ func SetupRouter(h *handler.Handlers) *gin.Engine {
 				questions.PUT("/:id/final", h.Final.Publish)      //公布最终选择，公布即结束
 
 			}
+
+			// /api/replies 资源组：删除回复（评论列表与发表挂在 /questions/:id/replies 下）
+			replies := authed.Group("/replies")
+			{
+				replies.DELETE("/:id", h.Reply.Delete) //软删除一条回复，作者或本题提问者可删
+
+			}
 		}
 	}
 

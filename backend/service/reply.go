@@ -140,3 +140,43 @@ func (s *ReplyService) Create(ctx context.Context, questionID, userID int64, con
 		Author:    model.NewUserBrief(u),
 	}, nil
 }
+
+// DeleteResult 删除评论的响应体
+type DeleteResult struct {
+	ID      int64 `json:"id"`
+	Deleted bool  `json:"deleted"`
+}
+
+// Delete 软删除一条评论，作者本人可以删自己的，提问者可以删本题下任何人的评论
+func (s *ReplyService) Delete(ctx context.Context, replyID, userID int64) (*DeleteResult, error) {
+	rp, err := s.replyRepo.GetActiveByID(ctx, replyID) //查询一条有效的评论
+	if err != nil {
+		return nil, err
+	}
+	if rp == nil {
+		return nil, model.ErrReplyNotFound
+	}
+
+	//查询评论所属的问题以及提问人
+	q, err := s.questionRepo.GetByID(ctx, rp.QuestionID)
+	if err != nil {
+		return nil, err
+	}
+
+	//检查删除人是否有权限
+	if rp.UserID != userID && q.AskerID != userID {
+		return nil, model.ErrNotReplyOwner
+	}
+
+	//执行软删除
+	won, err := s.replyRepo.SoftDelete(ctx, replyID)
+	if err != nil {
+		return nil, err
+	}
+	//处理并发删除-+
+	if !won {
+		return nil, model.ErrReplyNotFound
+	}
+
+	return &DeleteResult{ID: replyID, Deleted: true}, nil
+}

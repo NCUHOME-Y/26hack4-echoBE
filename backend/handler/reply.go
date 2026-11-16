@@ -83,3 +83,30 @@ func (h *ReplyHandler) Create(c *gin.Context) {
 
 	Created(c, view)
 }
+
+// Delete 删除回复
+func (h *ReplyHandler) Delete(c *gin.Context) {
+	replyID, err := strconv.ParseInt(c.Param("id"), 10, 64) //从路径中读取回复ID
+	if err != nil || replyID <= 0 {
+		Error(c, http.StatusNotFound, model.ErrReplyNotFound.Error()) //非法ID与不存在同一句，与其他接口口径一致
+		return
+	}
+
+	userID := c.GetInt64("userID")
+
+	result, err := h.replySvc.Delete(c.Request.Context(), replyID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrReplyNotFound):
+			Error(c, http.StatusNotFound, err.Error())
+		case errors.Is(err, model.ErrNotReplyOwner):
+			Error(c, http.StatusForbidden, err.Error())
+		default: //剩下的才是真故障，比如评论在但所属的题取不到
+			log.Printf("删除评论失败 replyID=%d userID=%d err=%v", replyID, userID, err)
+			Error(c, http.StatusInternalServerError, "服务异常，请稍后重试")
+		}
+		return
+	}
+
+	Success(c, result) //200，软删除不返回 204，契约要 {id, deleted: true}
+}
