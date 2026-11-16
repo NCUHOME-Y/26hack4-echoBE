@@ -28,3 +28,18 @@ func (r *OptionRepository) ListByQuestion(ctx context.Context, questionID int64)
 	}
 	return opts, nil
 }
+
+// ListByQuestions 一次查询多道题的选项，提高查询效率
+func (r *OptionRepository) ListByQuestions(ctx context.Context, questionIDs []int64) ([]model.Option, error) {
+	//空的问题ID直接返回空列表，避免 SQL 语法错误
+	if len(questionIDs) == 0 {
+		return []model.Option{}, nil
+	}
+	var opts []model.Option
+	err := r.db.WithContext(ctx).Where("question_id IN ?", questionIDs). //批量查询
+		Order("question_id, sort_no").Find(&opts).Error
+	if err != nil {
+		return nil, fmt.Errorf("批量查询选项失败: %w", err)
+	}
+	return opts, nil
+}

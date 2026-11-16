@@ -67,6 +67,34 @@ func (r *VoteRepository) CountByOption(ctx context.Context, questionID int64) (m
 	return counts, nil
 } //注意：没有票的选项不会出现在数据库聚合结果中，因此 service 层需要给缺失选项补 0
 
+// CountByOptions 一次性统计一批选项的票数
+func (r *VoteRepository) CountByOptions(ctx context.Context, optionIDs []int64) (map[int64]int64, error) {
+	//空参数处理
+	if len(optionIDs) == 0 {
+		return map[int64]int64{}, nil
+	}
+	type row struct {
+		OptionID int64
+		Votes    int64
+	}
+	//批量聚合查询
+	var rows []row
+	err := r.db.WithContext(ctx).Model(&model.Vote{}).
+		Select("option_id, count(*) AS votes").
+		Where("option_id IN ?", optionIDs).
+		Group("option_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("批量统计选项票数失败: %w", err)
+	}
+	//转换为map
+	counts := make(map[int64]int64, len(rows))
+	for _, x := range rows {
+		counts[x.OptionID] = x.Votes
+	}
+	return counts, nil
+}
+
 // WithTx 返回一个绑到事务的仓库副本
 func (r *VoteRepository) WithTx(tx *gorm.DB) *VoteRepository {
 	return &VoteRepository{db: tx}
