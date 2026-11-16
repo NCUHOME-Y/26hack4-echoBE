@@ -156,3 +156,27 @@ func (r *QuestionRepository) CountContested(ctx context.Context) (int64, error) 
 	}
 	return n, nil
 }
+
+// CountCreatedBetween 统计落在一个区间内的创建问题数量
+func (r *QuestionRepository) CountCreatedBetween(ctx context.Context, start, end time.Time) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.Question{}).
+		Where("created_at >= ? AND created_at < ?", start, end).
+		Count(&n).Error
+	if err != nil {
+		return 0, fmt.Errorf("统计今日发布量失败: %w", err)
+	}
+	return n, nil
+}
+
+// CountSettledBetween 统计落在一个区间内的结算问题数量
+func (r *QuestionRepository) CountSettledBetween(ctx context.Context, start, end time.Time) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.Question{}).
+		Where("settled_at >= ? AND settled_at < ?", start, end).
+		Count(&n).Error
+	if err != nil {
+		return 0, fmt.Errorf("统计今日结算量失败: %w", err)
+	}
+	return n, nil
+}
