@@ -38,7 +38,10 @@ func (r *MeRepository) ListMyQuestions(
 		Select(`
 			q.id,
 			q.description,
-			q.status,
+			CASE WHEN q.status = 'open'
+			          AND q.expires_at > now()
+			          AND q.settled_at IS NULL
+			     THEN 'open' ELSE 'closed' END AS status,
 			q.expires_at,
 			q.created_at,
 			q.settled_at,
@@ -94,7 +97,10 @@ func (r *MeRepository) ListMyAnswers(
 		Select(`
 			q.id AS question_id,
 			q.description,
-			q.status,
+			CASE WHEN q.status = 'open'
+			          AND q.expires_at > now()
+			          AND q.settled_at IS NULL
+			     THEN 'open' ELSE 'closed' END AS status,
 			v.option_id AS my_option_id,
 			o.label AS my_option_label,
 			q.final_option_id,
