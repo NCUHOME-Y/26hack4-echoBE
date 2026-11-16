@@ -212,11 +212,8 @@ func (s *QuestionService) buildDetail(ctx context.Context, q *model.Question, us
 	// 6.can_vote=在窗口内+没投过+没跳过+不是自己的题（IsLive已含未关闭、未过期、未结算）
 	canVote := q.IsLive() && myV == nil && !skipped && q.AskerID != userID
 
-	// 7.对外只暴露open/closed，判据与投票接口共用IsLive：不在作答窗口内（已关闭、已过期）一律closed，
-	status := model.StatusOpen
-	if !q.IsLive() {
-		status = model.StatusClosed
-	}
+	// 7.对外的 open/closed 判定见 outwardStatus，与投票接口共用同一个 IsLive
+	status := outwardStatus(q)
 
 	detail := &QuestionDetail{
 		ID:            q.ID,
@@ -250,4 +247,107 @@ func (s *QuestionService) buildDetail(ctx context.Context, q *model.Question, us
 	}
 
 	return detail, nil
+}
+
+// outwardStatus 对外的题目状态
+func outwardStatus(q *model.Question) string {
+	if q.IsLive() {
+		return model.StatusOpen
+	}
+	return model.StatusClosed
+}
+
+// contestedListLimit 争议列表固定返回最新 100 条
+const contestedListLimit = 100
+
+// ContestedItem 争议列表的一项
+type ContestedItem struct {
+	ID          int64        `json:"id"`
+	Description string       `json:"description"`
+	Status      string       `json:"status"`
+	ExpiresAt   time.Time    `json:"expires_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+	SettledAt   *time.Time   `json:"settled_at"`
+	ContestedAt *time.Time   `json:"contested_at"`
+	TotalVotes  int64        `json:"total_votes"`
+	Options     []OptionView `json:"options"`
+}
+
+// ContestedList 争议列表响应。returned 是本次条数（上限 100），total 是争议库真实总数
+type ContestedList struct {
+	List     []ContestedItem `json:"list"`
+	Returned int64           `json:"returned"`
+	Total    int64           `json:"total"`
+}
+
+// Contested 争议海螺列表
+func (s *QuestionService) Contested(ctx context.Context) (*ContestedList, error) {
+	list, err := s.questionRepo.ListContested(ctx, contestedListLimit) //查询争议问题
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.questionRepo.CountContested(ctx) //查询问题总数
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]int64, 0, len(list)) //提取这一批的用户ID，批量查询选项和票数
+	for i := range list {
+		ids = append(ids, list[i].ID)
+	}
+	opts, err := s.optionRepo.ListByQuestions(ctx, ids) //批量查询选项
+	if err != nil {
+		return nil, err
+	}
+	optionIDs := make([]int64, 0, len(opts)) //提取选项ID，批量查询票数
+	for _, o := range opts {
+		optionIDs = append(optionIDs, o.ID)
+	}
+	counts, err := s.voteRepo.CountByOptions(ctx, optionIDs) //批量统计票数
+	if err != nil {
+		return nil, err
+	}
+
+	//第一遍按题分组，同时把每题总票数累出来——percent 要等总数出来才能算
+	byQuestion := make(map[int64][]OptionView, len(list)) //该问题对应的选项列表
+	totals := make(map[int64]int64, len(list)) //该问题的总票数
+	
+	//组装选项和总票数
+	for _, o := range opts { 
+		votes := counts[o.ID] //0 票的选项不在 map 里，取出来正好是 0
+		totals[o.QuestionID] += votes
+		byQuestion[o.QuestionID] = append(byQuestion[o.QuestionID], OptionView{
+			ID:     o.ID,
+			Label:  o.Label,
+			SortNo: o.SortNo,
+			Votes:  votes,
+		})
+	}
+
+	//组装争议问题列表
+	items := make([]ContestedItem, 0, len(list))
+	for i := range list {
+		q := &list[i]
+		views := byQuestion[q.ID]
+		if views == nil {
+			views = []OptionView{}
+		}
+		for j := range views {
+			//占比用那个唯一的 percent 函数，和详情、投票同一个算法
+			views[j].Percent = percent(views[j].Votes, totals[q.ID])
+		}
+		items = append(items, ContestedItem{
+			ID:          q.ID,
+			Description: q.Description,
+			Status:      outwardStatus(q),
+			ExpiresAt:   q.ExpiresAt,
+			CreatedAt:   q.CreatedAt,
+			SettledAt:   q.SettledAt,
+			ContestedAt: q.ContestedAt,
+			TotalVotes:  totals[q.ID],
+			Options:     views,
+		})
+	}
+
+	return &ContestedList{List: items, Returned: int64(len(items)), Total: total}, nil
 }
