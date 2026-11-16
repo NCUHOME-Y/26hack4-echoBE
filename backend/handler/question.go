@@ -93,3 +93,15 @@ func (h *QuestionHandler) Random(c *gin.Context) {
 	} //空池也是正常状态
 	Success(c, detail)
 }
+
+// Contested 争议海螺列表
+func (h *QuestionHandler) Contested(c *gin.Context) {
+	result, err := h.questionSvc.Contested(c.Request.Context()) //调用service层完成争议题列表业务
+	if err != nil {
+		log.Printf("争议列表失败 err=%v", err)
+		Error(c, http.StatusInternalServerError, "服务异常，请稍后重试")
+		return
+	}
+
+	Success(c, result)
+}

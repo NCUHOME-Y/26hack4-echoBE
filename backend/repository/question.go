@@ -122,10 +122,37 @@ func (r *QuestionRepository) MarkSettled(ctx context.Context, questionID int64, 
 // MarkFinalOnly 补写最终选择（遇到平票或者没有人投票的时候）
 func (r *QuestionRepository) MarkFinalOnly(ctx context.Context, questionID, optionID int64) (bool, error) {
 	res := r.db.WithContext(ctx).Model(&model.Question{}).
-		Where("id = ? AND final_option_id IS NULL", questionID). //防止重复公布把选择改掉
+		Where("id = ? AND final_option_id IS NULL", questionID).     //防止重复公布把选择改掉
 		Updates(map[string]interface{}{"final_option_id": optionID}) //只修改最终选项
 	if res.Error != nil {
 		return false, fmt.Errorf("写入最终选择失败: %w", res.Error)
 	}
 	return res.RowsAffected > 0, nil //影响 0 行说明这题已经定过一次了
+}
+
+// ListContested 争议海螺列表：contested_at 非空，按进入争议库的时间倒序取前 limit 条
+func (r *QuestionRepository) ListContested(ctx context.Context, limit int) ([]model.Question, error) {
+	var list []model.Question
+	//查询已经进入争议库的问题
+	err := r.db.WithContext(ctx).
+		Where("contested_at IS NOT NULL").
+		Order("contested_at DESC"). //最新的问题排在最前面
+		Limit(limit). //限制查询数量
+		Find(&list).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询争议问题失败: %w", err)
+	}
+	return list, nil
+}
+
+// CountContested 争议库的真实总条数
+func (r *QuestionRepository) CountContested(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.Question{}).
+		Where("contested_at IS NOT NULL").
+		Count(&n).Error
+	if err != nil {
+		return 0, fmt.Errorf("统计争议问题失败: %w", err)
+	}
+	return n, nil
 }
