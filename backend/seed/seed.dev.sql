@@ -17,8 +17,8 @@ INSERT INTO questions (id, asker_id, description, status, option_count, expires_
   (9001, 9001, '周末去图书馆还是在家赶作业',   'open',   2, now() + interval '7 days', NULL,                          NULL),
   (9002, 9002, '社团面试和室友生日撞了选哪个', 'open',   3, now() + interval '2 hours', NULL,                          NULL),
   (9003, 9003, '换新手机还是攒钱换电脑',       'open',   2, now() - interval '1 hour',  NULL,                          NULL),
-  (9004, 9001, '考研还是直接工作',             'closed', 2, now() - interval '3 days',  now() - interval '10 minutes', NULL),
-  (9005, 9002, '午饭吃食堂还是点外卖',         'closed', 2, now() - interval '1 day',   now() - interval '20 minutes', now() - interval '20 minutes');
+  (9004, 9001, '考研还是直接工作',             'closed', 2, now() - interval '3 days',  now() - interval '3 days' - interval '1 hour', NULL),
+  (9005, 9002, '午饭吃食堂还是点外卖',         'closed', 2, now() - interval '1 day',   now() - interval '1 day' - interval '1 hour', now() - interval '1 day' - interval '1 hour');
 
 /*3) 选项：题 9002 给三个选项，题 9004 和 9005 故意做成票数接近*/
 INSERT INTO options (id, question_id, label, sort_no) OVERRIDING SYSTEM VALUE VALUES
@@ -28,10 +28,10 @@ INSERT INTO options (id, question_id, label, sort_no) OVERRIDING SYSTEM VALUE VA
   (9008, 9004, '考研',   1), (9009, 9004, '工作', 2),
   (9010, 9005, '食堂',   1), (9011, 9005, '外卖', 2);
 
-/*4) 已结算的两道题补上最终选择（必须是它自己的选项，否则复合外键会拦）
-   9004 和 9005 都是 1:1 平票。按已定规则（平票不猜，final_option_id 留空，由提问者用 #13 补公布），
-   自动结算出来的这两题 final_option_id 应该是 NULL——这里写成非空，代表的是"提问者事后已经公布过"的状态，
-   也就是 #13 走完之后的库。要演示"平票还没定"，把这两行注释掉即可*/
+/*4) 已结算的两道题带上最终选择（必须是它自己的选项，否则复合外键会拦）
+   最终选择只由提问者本人在到期前用 #13 指定，后端不按票数猜；到期时没指定就永久为空，事后不开放补公布。
+   所以这里非空的 final_option_id 代表的是"到期前就公布了"，上面两题的 settled_at 必须早于 expires_at，
+   否则就是代码产不出来的状态。要演示"到期了但没定"，把这两行注释掉即可*/
 UPDATE questions SET final_option_id = 9008 WHERE id = 9004;
 UPDATE questions SET final_option_id = 9010 WHERE id = 9005;
 
@@ -54,7 +54,7 @@ INSERT INTO replies (question_id, user_id, content) VALUES
   (9002, 9003, '两个都不能推，看看能不能错峰');
 
 /*8) 经验流水：代表"第 9 段那两条题结算完成之后"的库状态，reason 和 delta 全部取 model/exp.go 的常量
-   ask=10 每题一次 / settle_ask=40 给提问者 / settle_match=25 与最终选择一致 / settle_miss=5 不一致
+   ask=10 每题一次 / settle_ask=40 只给到期前定了最终选择的提问者 / settle_match=25 与最终选择一致 / settle_miss=5 不一致
    改常量要同步改这里，否则余额和流水对不上，第 9 段重算出来的 exp 就露馅了
    唯一约束是 (user_id, source_type, source_id, reason)，同一题同一理由不能出现两次
    9001 9002 9003 三道题还没结算，所以只有 ask，没有 settle 系列*/

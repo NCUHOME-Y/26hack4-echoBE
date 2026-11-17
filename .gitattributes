@@ -1,0 +1,12 @@
+# 文本文件进仓库一律 LF，检出时按平台给（Windows 上是 CRLF）
+* text=auto
+
+# 下面这几个强制 LF，不跟 core.autocrlf 走。
+# 说明一下为什么只是预防：本机这三个文件现在是 CRLF，实测镜像照样构建得起来、
+# compose 照样解析、dbinit 照样跑通——BuildKit、YAML 和 psql 都把行尾的 \r 当空白吃掉了。
+# 真正会被 \r 咬的是 shell 脚本（`sh -c` 会把 \r 当成命令的一部分），所以只要以后往仓库里
+# 加 .sh 或任何被容器直接执行的脚本，这条规则就在替你挡坑；顺带保证跨平台 diff 干净。
+Dockerfile         text eol=lf
+.dockerignore      text eol=lf
+docker-compose.yml text eol=lf
+*.yml              text eol=lf

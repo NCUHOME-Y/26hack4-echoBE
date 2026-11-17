@@ -47,7 +47,7 @@ func NewSettleService(questionRepo *repository.QuestionRepository, voteRepo *rep
 // SettleOutcome 一次结算的结果
 type SettleOutcome struct {
 	QuestionID    int64
-	FinalOptionID *int64 //空表示这题还没定：无人投票或最高票数平票，留给提问者补公布
+	FinalOptionID *int64 //自动结算出来恒为空，只有提问者公布之后才有值
 	Contested     bool
 	Already       bool //这题之前是否就被结算过
 	Won           bool //本次 UPDATE 是否真正生效
@@ -72,9 +72,9 @@ func (s *SettleService) SettleQuestion(ctx context.Context, questionID int64) (*
 		return nil, err
 	}
 
-	//一次遍历求出票数分布。自动结算和提问者公布用的是同一个函数，两套判定不可能分叉
+	//一次遍历求出票数分布，只为争议判定服务；自动结算不替提问者做选择
 	t := tallyVotes(counts)
-	finalOptionID := t.topID //第一名唯一时才有值；平票或者根本没人投就留空给提问者
+	var finalOptionID *int64 //最终选择一律留空，等提问者用 #13 公布
 	contested := t.contested()
 
 	//写入结算结果，并在同一个事务里发积分
@@ -110,21 +110,23 @@ func settleReward(votedOptionID int64, finalOptionID *int64) (reason string, del
 	return model.ExpReasonSettleMiss, model.ExpSettleMiss
 }
 
-// grantSettleExp 在结算事务内发积分：提问者一份 settle_ask，每个投票者按选项归属一份。
+// grantSettleExp 在结算事务内发积分：提问者一份 settle_ask（只在他本人定出最终选择时），每个投票者按选项归属一份。
 // 投票明细要在事务里读，而不是进事务前读——UPDATE 已经拿到这道题的行锁，
 // 此时读到的名单和写进去的结算结果才是同一份事实。
 // 重复发放由 exp_entries 的唯一约束 (user_id, source_type, source_id, reason) 拦在库层，
 // 所以这里不需要先查后插。
 func (s *SettleService) grantSettleExp(tx *gorm.DB, ctx context.Context, askerID int64, questionID int64, finalOptionID *int64) error {
-	//先给提问者发经验
-	if err := s.expRepo.GrantTx(tx, &model.ExpEntry{
-		UserID:     askerID,
-		Delta:      model.ExpSettleAsk,
-		Reason:     model.ExpReasonSettleAsk,
-		SourceType: model.ExpSourceQuestion,
-		SourceID:   questionID,
-	}); err != nil {
-		return err
+	//提问者那份 40 只在最终选择是他定出来的时候才发；到期时没定，这题就没有结算奖励
+	if finalOptionID != nil {
+		if err := s.expRepo.GrantTx(tx, &model.ExpEntry{
+			UserID:     askerID,
+			Delta:      model.ExpSettleAsk,
+			Reason:     model.ExpReasonSettleAsk,
+			SourceType: model.ExpSourceQuestion,
+			SourceID:   questionID,
+		}); err != nil {
+			return err
+		}
 	}
 
 	//查询所有的投票
@@ -213,10 +215,9 @@ type tally struct {
 	total  int64
 	top    int64
 	second int64
-	topID  *int64 //第一名票数唯一时对应的选项；平票或没人投票时为 nil
 }
 
-// tallyVotes 一次求出总量、第一名和第二名
+// tallyVotes 一次求出总量、第一名票数、第二名票数
 func tallyVotes(counts map[int64]int64) tally {
 	var t tally
 	for _, n := range counts {
@@ -227,16 +228,6 @@ func tallyVotes(counts map[int64]int64) tally {
 			t.top = n
 		case n > t.second:
 			t.second = n
-		}
-	}
-	//第一名唯一才定得出来
-	if t.total > 0 && t.top > t.second {
-		for id, n := range counts {
-			if n == t.top {
-				v := id
-				t.topID = &v
-				break
-			}
 		}
 	}
 	return t
@@ -282,35 +273,28 @@ func (s *SettleService) PublishFinal(ctx context.Context, questionID, userID, op
 		return nil, model.ErrOptionNotInQuestion
 	}
 
-	//确认当前问题还没结算
+	//最终选择只由提问者本人在题目还开着的时候定
 	if q.FinalOptionID != nil {
 		return nil, model.ErrFinalAlreadySet
 	}
+	if !q.IsLive() { //到期或被结算过就不再开放，这题永久停在"没有最终选择"
+		return nil, model.ErrFinalWindowClosed
+	}
 
-	//只补充最终选项
+	//公布即结算：写入他指定的选项，同时打 settled_at、关闭题目、同一个事务里发积分
 	published := optionID
-	if q.IsSettled() {
-		won, err := s.questionRepo.MarkFinalOnly(ctx, questionID, optionID)
-		if err != nil {
-			return nil, err
-		}
-		if !won {
-			return nil, s.recheckFinal(ctx, questionID)
-		}
-	} else { //未结算的问题，同时完成公布和结算
-		counts, err := s.voteRepo.CountByOption(ctx, questionID)
-		if err != nil {
-			return nil, err
-		}
-		won, err := s.questionRepo.SettleWith(ctx, questionID, &published, tallyVotes(counts).contested(), func(tx *gorm.DB) error {
-			return s.grantSettleExp(tx, ctx, q.AskerID, questionID, &published)
-		})
-		if err != nil {
-			return nil, err
-		}
-		if !won {
-			return nil, s.recheckFinal(ctx, questionID)
-		}
+	counts, err := s.voteRepo.CountByOption(ctx, questionID)
+	if err != nil {
+		return nil, err
+	}
+	won, err := s.questionRepo.SettleWith(ctx, questionID, &published, tallyVotes(counts).contested(), func(tx *gorm.DB) error {
+		return s.grantSettleExp(tx, ctx, q.AskerID, questionID, &published)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !won {
+		return nil, s.recheckFinal(ctx, questionID)
 	}
 
 	return &FinalResult{QuestionID: questionID, FinalOptionID: optionID}, nil
@@ -324,6 +308,9 @@ func (s *SettleService) recheckFinal(ctx context.Context, questionID int64) erro
 	}
 	if q.FinalOptionID != nil {
 		return model.ErrFinalAlreadySet
+	}
+	if q.IsSettled() { //被后台结算抢先关掉了，窗口已经关了
+		return model.ErrFinalWindowClosed
 	}
 	return fmt.Errorf("公布最终选择未生效 questionID=%d", questionID)
 }
