@@ -203,7 +203,9 @@ docker compose --env-file backend/.env exec db psql -U echo_app -d echodb
 
 进去之后 `\dt` 看表、`\d questions` 看字段、`SELECT count(*) FROM votes;` 数行数，`\q` 退出。
 
-> 容器里的库对外映射在 **5433**（不是 5432），因为你本机那个 PostgreSQL 已经占了 5432，两个库互不干扰。用图形化工具连的时候填：主机 `127.0.0.1`、端口 `5433`、库 `echodb`、用户 `echo_app`。
+> 容器里的库对外映射在 **5432**，库 `echodb`、用户 `echo_app`。图形工具连：主机 `127.0.0.1`、端口 `5432`。
+> 启动必须带 env 文件：`docker compose --env-file backend/.env up -d`（口令和 JWT 密钥从 `backend/.env` 读，缺了会直接报错退出）。
+> 若本机已有 Postgres 占着 5432，把 compose 里该行改成 `5433:5432`，或先停掉本机库。
 
 ---
 
