@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,15 @@ import (
 type Claims struct {
 	UserID int64 `json:"user_id"`
 	jwt.RegisteredClaims //JWT所提供的标准字段集合（本代码暂时只使用了签发与过期时间）
+}
+
+//tokenTTL 登录凭证有效期。默认 24 小时
+func tokenTTL() time.Duration {
+	h, err := strconv.Atoi(os.Getenv("JWT_EXPIRE_HOURS"))
+	if err != nil || h <= 0 {
+		h = 24
+	}
+	return time.Duration(h) * time.Hour
 }
 
 //生成登录凭证
@@ -30,7 +40,7 @@ func GenerateToken(userID int64) (string, error) {
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(time.Now()), //签发时间
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), //有效期为24小时
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(tokenTTL())), //有效期由 JWT_EXPIRE_HOURS 决定，默认 24 小时
 		},
 	}
 
