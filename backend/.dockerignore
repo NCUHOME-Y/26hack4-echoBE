@@ -1,0 +1,14 @@
+# 这些文件不许进构建上下文：进了就等于把口令和二进制塞进镜像层
+.env
+.env.*
+!.env.example
+*.exe
+*.test
+*.log
+
+# 镜像里不跑迁移，SQL 由 compose 挂给 postgres，避免同一批文件在镜像里再存一份过期副本
+migrations/
+seed/
+
+Dockerfile
+.dockerignore
