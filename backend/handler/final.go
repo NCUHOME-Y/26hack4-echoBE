@@ -48,7 +48,7 @@ func (h *FinalHandler) Publish(c *gin.Context) {
 			Error(c, http.StatusNotFound, err.Error())
 		case errors.Is(err, model.ErrNotAsker):
 			Error(c, http.StatusForbidden, err.Error())
-		case errors.Is(err, model.ErrFinalAlreadySet):
+		case errors.Is(err, model.ErrFinalAlreadySet), errors.Is(err, model.ErrFinalWindowClosed):
 			Error(c, http.StatusConflict, err.Error())
 		default: //剩下的才是真故障
 			middleware.L().Error("公布最终选择失败", zap.Int64("question_id", questionID), zap.Int64("user_id", userID), zap.Error(err))

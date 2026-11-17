@@ -24,3 +24,4 @@ var ErrReplyNotFound = errors.New("回复不存在")                   //404，�
 var ErrNotReplyOwner = errors.New("只能删除自己的回复，或由提问者删除本题下的回复") //403，删除回复
 var ErrNotAsker = errors.New("只有提问者能公布最终选择")                 //403，公布最终选择
 var ErrFinalAlreadySet = errors.New("这道题的最终选择已经定过了，不能再修改")   //409，重复公布
+var ErrFinalWindowClosed = errors.New("这道题已经结束，不能再公布最终选择") //409，到期后不再开放补公布
