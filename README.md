@@ -235,23 +235,27 @@ docker compose --env-file backend/.env exec db psql -U echo_app -d echodb
 
 开发环境和生产环境的区别只体现在注入的变量值上：本机用 `.env`，容器和服务器用环境变量注入，**代码只认一套读取路径**，没有 `.env.dev` / `.env.prod` 两套文件。`DB_SSLMODE` 本机用 `disable`，连远端库应改成 `require`。
 
-## 跑不起来怎么查
+## 仓库结构
 
-| 看到的报错 | 是什么意思 | 怎么办 |
-|---|---|---|
-| `缺少 JWT_SECRET，请检查 .env` | 密钥没填，服务故意不起 | 回 A2 填上 |
-| `DB_PASSWORD 在 .env 里是空的` 或 `缺少 DB_HOST 或 DB_NAME` | `.env` 没配或没改名 | 确认 `backend/.env` 存在且填了值 |
-| `数据库初始化失败 ... connection refused` | PostgreSQL 没在跑，或端口写错 | 启动数据库服务；确认 `DB_PORT=5432` |
-| `permission denied to create role` 或 `... to create database` | A3 那两条用应用账号跑了，权限不够 | 改成 `-U postgres` 重跑 A3 |
-| `password authentication failed for user "你的系统用户名"` | `migrate` 的连接串里没写用户名，退回用了系统账号 | 连接串写全 `postgres://echo_app@127.0.0.1:5432/echodb?...` |
-| `unrecognized configuration parameter "password_env"` | 这个驱动版本不认 `password_env` 参数 | 用 `export PGPASSWORD=...`，别写进连接串 |
-| `Dirty database version 6. Fix and force version.` | 某次迁移跑到一半失败，被标记为脏 | 先确认那条迁移做了一半还是完全没做，再 `migrate ... force 6` |
-| `relation "questions" does not exist` | 还没跑迁移 | 执行 A4 |
-| `listen tcp :8080: bind: Only one usage...` | 8080 被别的进程占了（常见是另一个后端实例或容器还在跑） | 关掉另一个，或改 `.env` 里的 `PORT` |
-| 登录返回 401 `账号或密码错误` | 没灌 seed，或者用的是旧版 seed 的占位密码 | 执行 A5 重灌，再用 `alice01 / Echo12345678` |
-| `curl` 完全没有响应 | 服务没起或已经退出 | 看启动那个窗口的报错；容器方式跑 `docker compose logs app` |
-| Docker：`FROM golang:1.27-alpine` 卡住或超时 | 拉不到基础镜像 | 按 B1 配 `registry-mirrors` |
-| Docker：`go mod download` 报 `connection refused` | 构建容器里连不上 Go 代理 | `docker compose build --build-arg GOPROXY=https://proxy.golang.org,direct`（国内默认值已经能用了） |
-| Docker：db 容器起不来，日志里有 `unused mount/volume` | 数据卷挂在了旧路径 | 保持 compose 里 `dbdata:/var/lib/postgresql`（Postgres 18 的新规矩，别改回 `.../data`） |
+```
+26hack4-echoBE/          # 本仓库
+├── backend/             # 后端全部代码，Go 模块名 echo
+│   ├── .dockerignore    # 构建镜像时不带进去的东西：.env、*.exe、migrations/、seed/
+│   ├── .env.example     # 配置模板，列全 10 个键和各自的含义
+│   ├── Dockerfile       # 两阶段构建：先编译出静态二进制，再放进 alpine 运行时
+│   ├── go.mod           # Go 模块声明，模块名 echo
+│   ├── go.sum           # 依赖的校验和
+│   ├── main.go          # 启动入口：读环境变量、装配依赖、起 HTTP、收到信号后优雅退出
+│   ├── router/          # 18 条路由的挂载，以及 panic 兜底、404/405 统一返回
+│   ├── middleware/      # JWT 鉴权、跨域白名单、请求日志
+│   ├── handler/         # 接口层：校验入参，把错误映射成状态码和 msg
+│   ├── service/         # 业务规则：投票与占比、到期结算与争议判定、评论软删、今日统计、发积分
+│   ├── repository/      # GORM 查询与事务
+│   ├── model/           # 实体、请求结构、哨兵错误、积分常量
+│   ├── migrations/      # golang-migrate 的 up/down 对，0000NN_ 前缀就是版本号
+│   └── seed/            # 开发数据：5 道题、11 张票、2 条评论、4 个能登录的账号
+├── docker-compose.yml   # 三个服务：db（PostgreSQL）、dbinit（一次性建表灌数据）、app（后端）
+├── README.md            # 本文件
+└── .gitignore           # 挡住 .env、*.exe、tmp/、.idea/、.vscode/
+```
 
-想确认后端有没有出错，看日志里的 `level` 字段：`error` 才是服务端故障，`warn` 多半是请求参数不对，`info` 是正常访问记录。
