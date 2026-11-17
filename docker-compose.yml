@@ -1,0 +1,93 @@
+# 一键起「postgres + 回声后端」。
+# 口令和 JWT 密钥从 backend/.env 读，不写进本文件（本文件在 git 里）：
+#   docker compose --env-file backend/.env up
+# 空库首次启动时，由一次性的 dbinit 容器按顺序执行 backend/migrations 的六个 up，再灌 seed。
+
+services:
+  db:
+    # 与开发实例同大版本（本机是 18.6），避免"本机跑得通、容器里建表失败"
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-echodb}
+      POSTGRES_USER: ${DB_USER:-echo_app}
+      # 缺这个变量直接报错退出，不允许起一个口令为空的库
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 未设置，请用 --env-file backend/.env}
+      # 容器内日志用北京时间，和后端、和评审看的时钟对得上
+      TZ: Asia/Shanghai
+    volumes:
+      # Postgres 18 的镜像改了数据目录约定：卷要挂在 /var/lib/postgresql 这一层，
+      # 它自己把数据放进 /var/lib/postgresql/18/docker 子目录。
+      # 沿用老写法挂到 .../data 的话，容器会直接报错退出：
+      # "there appears to be PostgreSQL data in: /var/lib/postgresql/data (unused mount/volume)"
+      # （本机实测撞到过；见 docker-library/postgres#1259）
+      - dbdata:/var/lib/postgresql
+      # 迁移和 seed 不在这里挂：backend/migrations 里同时有 .up.sql 和 .down.sql，
+      # 整目录交给 postgres 的 initdb 会把 down 也执行一遍（先 DROP TABLE 再 CREATE），
+      # 到 000002 的 down 就报 relation "questions" does not exist 然后退出。实测撞到过。
+      # 改由下面的 dbinit 一次性服务只跑 up、再跑 seed。
+    healthcheck:
+      # 后端必须等库真的能接，否则启动时 NewDB 的 Ping 会失败并退出
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-echo_app} -d ${DB_NAME:-echodb}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      # 只绑 127.0.0.1，不对局域网开放。宿主机端口用 5433：
+      # 本机开发实例已经占了 5432，撞上的话容器起不来，或者连上去的其实是本机那个库
+      - "127.0.0.1:5433:5432"
+
+  # 一次性初始化容器：等库能接连接之后，按文件名顺序跑六个 .up.sql，再灌 seed，然后自己退出。
+  # 只在空库上真正干活——检测到 users 表就跳过，所以重复 up 不会撞"表已存在"。
+  dbinit:
+    image: postgres:18-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # 用 PG* 这套标准变量，psql 不用拼连接串
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${DB_USER:-echo_app}
+      PGPASSWORD: ${DB_PASSWORD:?DB_PASSWORD 未设置}
+      PGDATABASE: ${DB_NAME:-echodb}
+    volumes:
+      - ./backend/migrations:/migrations:ro
+      - ./backend/seed:/seed:ro
+    # 注意这里的 $$：compose 会把 $f / $V 当成它自己的变量插值，$$ 才是转义成一个字面 $。
+    # 跑完六个 up 之后要把版本号写进 schema_migrations——psql -f 自己不会记，
+    # 不记的话这个库对 migrate 工具就是"没跑过任何迁移"，下次 migrate up 会从 000001 重来并撞已存在的表。
+    entrypoint: ["sh", "-c", "set -e; if psql -tA -c \"SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='users'\" | grep -q 1; then echo '[dbinit] 库里已有表，跳过'; exit 0; fi; for f in /migrations/*.up.sql; do echo \"[dbinit] $$f\"; psql -v ON_ERROR_STOP=1 -f \"$$f\"; done; echo '[dbinit] 灌 seed'; psql -v ON_ERROR_STOP=1 -f /seed/seed.dev.sql; V=$$(ls /migrations/*.up.sql | tail -1 | xargs basename | cut -d_ -f1 | sed 's/^0*//'); echo \"[dbinit] 记版本号 $$V\"; psql -v ON_ERROR_STOP=1 -c \"CREATE TABLE IF NOT EXISTS schema_migrations (version bigint PRIMARY KEY, dirty boolean NOT NULL DEFAULT false)\"; psql -v ON_ERROR_STOP=1 -c \"INSERT INTO schema_migrations(version, dirty) VALUES ($$V, false) ON CONFLICT DO NOTHING\""]
+    restart: "no"
+
+  app:
+    build:
+      context: ./backend
+    environment:
+      # 容器里连的是服务名 db，不是 127.0.0.1；这条覆盖 backend/.env 里的 DB_HOST
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-echo_app}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 未设置}
+      DB_NAME: ${DB_NAME:-echodb}
+      # 同一张卡网内的容器之间不需要 TLS；对外部数据库应改回 require
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 未设置}
+      JWT_EXPIRE_HOURS: ${JWT_EXPIRE_HOURS:-24}
+      PORT: "8080"
+      GIN_MODE: release
+      # 留空表示放开跨域。真要收紧就填前端地址，多个用逗号分隔
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
+      TZ: Asia/Shanghai
+    ports:
+      - "${PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      # 后端要等初始化容器**成功退出**再起，否则表还没建好，后端第一个查询就 500
+      dbinit:
+        condition: service_completed_successfully
+    # stop_grace_period 要大于后端 shutdownTimeout(10s)，否则 docker stop 会在优雅关闭完成前就 SIGKILL
+    stop_grace_period: 15s
+
+volumes:
+  dbdata:

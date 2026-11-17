@@ -86,6 +86,31 @@ cd backend && go run .
 curl http://127.0.0.1:8080/api/ping
 ```
 
+### 6. 用容器跑（可选，等价于上面 2–5 步）
+
+```bash
+docker compose --env-file backend/.env up --build
+```
+
+一条命令起 postgres + 后端，不用手工建库、不用装 migrate、也不用手工灌 seed：
+
+```bash
+docker compose --env-file backend/.env up --build      # 起
+docker compose --env-file backend/.env ps              # 三个服务：db healthy、dbinit exited(0)、app running
+docker compose --env-file backend/.env down           # 停，数据留着；加 -v 连数据卷一起清空
+```
+
+- **dbinit 是一次性初始化容器**：等 db 健康检查通过之后，按文件名顺序执行 `backend/migrations/*.up.sql`（零填充，字典序即版本号序），再灌 `seed.dev.sql`，最后把最大版本号写进 `schema_migrations`，然后自己退出。检测到 `users` 表已存在就整段跳过，所以重复 `up` 不会把数据重灌一遍。
+  为什么不交给 postgres 自带的 initdb：`migrations/` 里同时有 `.up.sql` 和 `.down.sql`，整目录挂进 `/docker-entrypoint-initdb.d` 会把 down 也执行一遍（先 `DROP TABLE` 再 `CREATE`），到 `000002` 的 down 就报 `relation "questions" does not exist` 然后容器退出。
+  为什么 dbinit 要手写版本号：`psql -f` 不记版本，不写的话这个库对 `migrate` 工具等于"没跑过迁移"，下次 `migrate up` 会从 000001 重来并撞表。写完之后 `migrate ... version` 读出 `6`、`up` 回 `no change`，两条路共用同一批文件、互不打架。
+- 口令和 `JWT_SECRET` 从 `backend/.env` 读，**不写进 compose 文件也不进镜像**；少了这两个变量 compose 会直接报错退出，不会起一个空口令的库。
+- 容器里的后端连的是服务名 `db`，不是 `127.0.0.1`（容器自己的 127.0.0.1 是它自己）；宿主机端口映射到 **5433**，因为本机开发实例已经占了 5432，两个库互不干扰。
+- 后端镜像是多阶段构建，运行层只有一个静态二进制 + 时区数据，非 root 用户运行；`TZ=Asia/Shanghai` 只影响日志时间戳，今日统计的日界在代码里用固定偏移算，不读系统时区。
+- 构建阶段默认用 `GOPROXY=https://goproxy.cn,direct`（本机到 `proxy.golang.org` 是 connection refused）。海外机器可以覆盖：`docker compose build --build-arg GOPROXY=https://proxy.golang.org,direct`。
+- 停服用 `docker compose stop`（发 SIGTERM）而不是 `kill`：前者会等在途请求写完并打「HTTP 服务已优雅退出」、退出码 0；后者直接拔电，退出码 137、一行收尾日志都没有。`stop_grace_period: 15s` 要大于代码里的 10 秒关闭窗口。
+
+前提是本机能拉到 `golang:1.27-alpine`、`alpine:3.20`、`postgres:18-alpine` 三个基础镜像。如果到 Docker Hub 不通，需要在 Docker Desktop 的 Settings → Docker Engine 里配 `registry-mirrors`，否则构建会在第一行 `FROM` 就失败。
+
 ## 测试账号
 
 `seed.dev.sql` 里四个账号共用同一个演示口令，可直接登录（bcrypt 真哈希，不是占位值）：
