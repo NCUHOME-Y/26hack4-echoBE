@@ -33,7 +33,7 @@ type SettleService struct {
 	expRepo      *repository.ExpRepository      //结算这一刻发积分
 }
 
-//注入这个业务所需要的repository
+// 注入这个业务所需要的repository
 func NewSettleService(questionRepo *repository.QuestionRepository, voteRepo *repository.VoteRepository,
 	optionRepo *repository.OptionRepository, expRepo *repository.ExpRepository) *SettleService {
 	return &SettleService{
@@ -97,7 +97,7 @@ func (s *SettleService) SettleQuestion(ctx context.Context, questionID int64) (*
 // settleReward 结算这一刻，某个投票者该拿哪一档：方案里的 25 / 5 / 15
 func settleReward(votedOptionID int64, finalOptionID *int64) (reason string, delta int) {
 	//平票或没人投票，还没定下来
-	if finalOptionID == nil { 
+	if finalOptionID == nil {
 		return model.ExpReasonSettleFailed, model.ExpSettleFailed
 	}
 
@@ -235,7 +235,7 @@ func tallyVotes(counts map[int64]int64) tally {
 
 // contested 是否进争议海螺
 func (t tally) contested() bool {
-	return t.total > contestedMinVotes && gapScore(t.top, t.second, t.total) <= contestedMaxGapScore
+	return t.total >= contestedMinVotes && gapScore(t.top, t.second, t.total) <= contestedMaxGapScore
 }
 
 // FinalResult 公布最终选择的响应体
@@ -247,18 +247,18 @@ type FinalResult struct {
 // PublishFinal 提问者公布最终选择
 func (s *SettleService) PublishFinal(ctx context.Context, questionID, userID, optionID int64) (*FinalResult, error) {
 	//查询问题
-	q, err := s.questionRepo.GetByID(ctx, questionID) 
+	q, err := s.questionRepo.GetByID(ctx, questionID)
 	if err != nil {
 		return nil, err
 	}
 
 	//确认当前用户为提问者
-	if q.AskerID != userID { 
+	if q.AskerID != userID {
 		return nil, model.ErrNotAsker
 	}
 
 	//确认选项属于当前问题
-	opts, err := s.optionRepo.ListByQuestion(ctx, questionID) 
+	opts, err := s.optionRepo.ListByQuestion(ctx, questionID)
 	if err != nil {
 		return nil, err
 	}
